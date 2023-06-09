@@ -28,8 +28,8 @@ MAX_HANDLER_ATTEMPTS = int(os.environ.get("MAX_HANDLER_ATTEMPTS", 5))
 KEY_LIFETIME_SECONDS = timedelta(seconds=int(os.environ.get("HANDLER_KEY_LIFETIME_SECONDS", 60 * 60 * 2)))
 
 
-def create_progress_key(message_id: str):
-    return f"{message_id}::progress"
+def create_progress_key(consumer: GroupConsumer, message_id: str):
+    return f"{message_id}::{consumer.group_name}::progress"
 
 
 async def set_and_retrieve_required_handlers(
@@ -37,7 +37,7 @@ async def set_and_retrieve_required_handlers(
     message_id: str,
     handlers: typing.Sequence[CodeDesignation]
 ) -> typing.Sequence[CodeDesignation]:
-    progress_key = create_progress_key(message_id=message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
     async with AsyncRedisLock(redis=consumer.connection, name=message_id) as lock:
         with consumer.connection.pipeline(transaction=True) as pipeline:  # type: Pipeline
             for handler in handlers:
@@ -60,7 +60,7 @@ async def set_and_retrieve_required_handlers(
 
 
 async def set_progress(consumer: GroupConsumer, message_id: str, handlers: typing.Sequence[CodeDesignation]):
-    progress_key = create_progress_key(message_id=message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
     if not await consumer.connection.exists(progress_key):
         handler_mapping = {
             handler.identifier: 0
@@ -71,7 +71,7 @@ async def set_progress(consumer: GroupConsumer, message_id: str, handlers: typin
 
 
 async def get_leftover_handler_ids(consumer: GroupConsumer, message_id: str) -> typing.Sequence[str]:
-    progress_key = create_progress_key(message_id=message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
 
     handler_ids = [
         handler_key
@@ -83,21 +83,21 @@ async def get_leftover_handler_ids(consumer: GroupConsumer, message_id: str) -> 
 
 
 async def update_handler_completion(consumer: GroupConsumer, message_id: str, handler: CodeDesignation):
-    progress_key = create_progress_key(message_id=message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
 
     await consumer.connection.hset(name=progress_key, key=handler.identifier, value=True)
     await consumer.connection.expire(progress_key, KEY_LIFETIME_SECONDS)
 
 
 async def update_handler_failure(consumer: GroupConsumer, message_id: str, handler: CodeDesignation):
-    progress_key = create_progress_key(message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
 
     await consumer.connection.hincrby(name=progress_key, key=handler.identifier, amount=1)
     await consumer.connection.expire(progress_key, KEY_LIFETIME_SECONDS)
 
 
 async def clear_handler_records(self, consumer: GroupConsumer, message_id: str):
-    progress_key = create_progress_key(message_id=message_id)
+    progress_key = create_progress_key(consumer=consumer, message_id=message_id)
 
     await consumer.connection.delete(progress_key)
     await consumer.connection.expire(progress_key, KEY_LIFETIME_SECONDS)

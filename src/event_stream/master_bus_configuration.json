@@ -1,0 +1,17 @@
+{
+    "name": "Master",
+    "handlers": {
+        "close": [
+            {
+                "module_name": "event_stream.handlers",
+                "name": "close_streams"
+            }
+        ],
+        "request_trim": [
+            {
+                "module_name": "event_streams.handlers",
+                "name": "trim_messages"
+            }
+        ]
+    }
+}

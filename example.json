@@ -1,0 +1,36 @@
+{
+    "busses": [
+        {
+            "name": "EchoBus",
+            "handlers": {
+                "echo": [
+                    {
+                        "module_name": "event_stream.handlers",
+                        "name": "echo_message"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "EchoBus with kwargs",
+            "handlers": {
+                "echo": [
+                    {
+                        "module_name": "event_stream.handlers",
+                        "name": "echo_message",
+                        "kwargs": {
+                            "one": 1,
+                            "two": 2,
+                            "three": {
+                                "a": "a",
+                                "b": ["c", "d", "e"]
+                            }
+                        }
+                    }
+                ]
+            },
+            "stream": "ALTERNATIVE_ECHO"
+        }
+    ],
+    "stream": "EVENTS"
+}

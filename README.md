@@ -1,6 +1,6 @@
-# Generic Python Project
+# Event Stream
 
-This template can be used as a starting point for building distributable Python packages. It includes a Makefile with targets to setup, run, test, and build a final installable PyPI compatible package. To learn more about packaging in Python see the [Python Packaging User Guide](https://packaging.python.org/).
+This is a python package designed to facilitate event based communication through Redis Streams.
 
 ## Build
 
@@ -21,7 +21,7 @@ python -m pip install dist/my_package-0.1.0-py3-none-any.whl
 
 ```bash
 python3 -m twine upload dist/*
-python3 -m pip install my_package
+python3 -m pip install event_stream
 ```
 
 See [Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/) for more details on uploading your package.

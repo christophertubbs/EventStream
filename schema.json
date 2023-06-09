@@ -1,0 +1,135 @@
+{
+    "title": "EventBusConfigurations",
+    "description": "A set of different event busses for different channels",
+    "type": "object",
+    "properties": {
+        "stream": {
+            "title": "Stream",
+            "type": "string"
+        },
+        "redis_configuration": {
+            "$ref": "#/definitions/RedisConfiguration"
+        },
+        "busses": {
+            "title": "Busses",
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/EventBusConfiguration"
+            }
+        }
+    },
+    "required": [
+        "stream",
+        "busses"
+    ],
+    "definitions": {
+        "SSLConfiguration": {
+            "title": "SSLConfiguration",
+            "description": "Configuration for SSL Protection",
+            "type": "object",
+            "properties": {
+                "ca_path": {
+                    "title": "Ca Path",
+                    "type": "string"
+                },
+                "ca_file": {
+                    "title": "Ca File",
+                    "type": "string"
+                },
+                "key_file": {
+                    "title": "Key File",
+                    "type": "string"
+                },
+                "ca_certs": {
+                    "title": "Ca Certs",
+                    "type": "string"
+                }
+            }
+        },
+        "RedisConfiguration": {
+            "title": "RedisConfiguration",
+            "description": "Represents the settings needed to connect to a Redis instance and a helpful function used to create a\nconnection to it",
+            "type": "object",
+            "properties": {
+                "host": {
+                    "title": "Host",
+                    "default": "127.0.0.1",
+                    "type": "string"
+                },
+                "port": {
+                    "title": "Port",
+                    "default": 6379,
+                    "type": "integer"
+                },
+                "db": {
+                    "title": "Db",
+                    "default": 0,
+                    "type": "integer"
+                },
+                "username": {
+                    "title": "Username",
+                    "type": "string"
+                },
+                "ssl_configuration": {
+                    "$ref": "#/definitions/SSLConfiguration"
+                }
+            }
+        },
+        "CodeDesignation": {
+            "title": "CodeDesignation",
+            "description": "Represents information used to find a function to call",
+            "type": "object",
+            "properties": {
+                "module_name": {
+                    "title": "Module Name",
+                    "type": "string"
+                },
+                "name": {
+                    "title": "Name",
+                    "type": "string"
+                },
+                "kwargs": {
+                    "title": "Kwargs",
+                    "type": "object"
+                }
+            },
+            "required": [
+                "module_name",
+                "name"
+            ]
+        },
+        "EventBusConfiguration": {
+            "title": "EventBusConfiguration",
+            "description": "The required configuration settings representing an event bus",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "title": "Name",
+                    "type": "string"
+                },
+                "group": {
+                    "title": "Group",
+                    "type": "string"
+                },
+                "handlers": {
+                    "title": "Handlers",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/CodeDesignation"
+                        }
+                    }
+                },
+                "redis_configuration": {
+                    "$ref": "#/definitions/RedisConfiguration"
+                }
+            },
+            "required": [
+                "name",
+                "group",
+                "handlers"
+            ]
+        }
+    }
+}

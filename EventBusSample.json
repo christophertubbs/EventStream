@@ -1,0 +1,79 @@
+{
+    "busses": [
+        {
+            "name": "First Bus",
+            "group": "A",
+            "handlers": {
+                "Post Save": [
+                    {
+                        "module_name": "event_stream.handlers",
+                        "name": "echo_message"
+                    },
+                    {
+                        "module_name": "dmod.whatever.some.module",
+                        "name": "do_something",
+                        "kwargs": {
+                            "one": 1,
+                            "two": 2,
+                            "three": {
+                                "a": "a",
+                                "b": ["c", "d", "e"]
+                            }
+                        }
+                    }
+                ],
+                "Event 2": [
+                    {
+                        "module_name": "dmod.communication.whatsit",
+                        "name": "record_action"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "Second Bus",
+            "group": "B",
+            "handlers": {
+                "Whatever": [
+                    {
+                        "module_name": "dmod.processing",
+                        "name": "save"
+                    },
+                    {
+                        "module_name": "third.party.library",
+                        "name": "do_something_special"
+                    }
+                ],
+                "Event 3": [
+                    {
+                        "module_name": "beef.its.whats.for",
+                        "name": "dinner"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "Third Bus",
+            "group": "C",
+            "handlers": {
+                "Submitted": [
+                    {
+                        "module_name": "dmod.actions",
+                        "name": "begin_action"
+                    },
+                    {
+                        "module_name": "dmod.records",
+                        "name": "function_that_triggers_event_4"
+                    }
+                ],
+                "Event 4": [
+                    {
+                        "module_name": "dmod.special.events",
+                        "name": "event_4"
+                    }
+                ]
+            }
+        }
+    ],
+    "stream": "EVENTS"
+}

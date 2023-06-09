@@ -1,0 +1,197 @@
+{
+    "title": "EventBusConfigurations",
+    "description": "A set of different event busses for different channels",
+    "type": "object",
+    "properties": {
+        "redis_configuration": {
+            "title": "Redis Configuration",
+            "description": "A globally defined configuration for how to connect to redis.",
+            "allOf": [
+                {
+                    "$ref": "#/definitions/RedisConfiguration"
+                }
+            ]
+        },
+        "busses": {
+            "title": "Busses",
+            "description": "The busses to launch that will be accepting messages",
+            "minItems": 1,
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/EventBusConfiguration"
+            }
+        },
+        "stream": {
+            "title": "Stream",
+            "description": "The name of the default stream to use for all busses unless specifically stated",
+            "default": "EVENTS",
+            "type": "string"
+        },
+        "name": {
+            "title": "Name",
+            "description": "A name for the event bus that may serve as the basis for how to identify all busses",
+            "type": "string"
+        }
+    },
+    "required": [
+        "busses"
+    ],
+    "definitions": {
+        "SSLConfiguration": {
+            "title": "SSLConfiguration",
+            "description": "Configuration for SSL Protection",
+            "type": "object",
+            "properties": {
+                "ca_path": {
+                    "title": "Ca Path",
+                    "description": "The path to a directory containing several CA certificates in PEM format. Defaults to None.",
+                    "type": "string"
+                },
+                "ca_file": {
+                    "title": "Ca File",
+                    "description": "Path to an ssl certificate. Defaults to None",
+                    "type": "string"
+                },
+                "key_file": {
+                    "title": "Key File",
+                    "description": "Path to an ssl private key. Defaults to None",
+                    "type": "string"
+                },
+                "ca_certs": {
+                    "title": "Ca Certs",
+                    "description": "The path to a file of concatenated CA certificates in PEM format. Defaults to None.",
+                    "type": "string"
+                }
+            }
+        },
+        "RedisConfiguration": {
+            "title": "RedisConfiguration",
+            "description": "Represents the settings needed to connect to a Redis instance and a helpful function used to create a\nconnection to it",
+            "type": "object",
+            "properties": {
+                "host": {
+                    "title": "Host",
+                    "description": "The web address of the machine hosting the redis instance",
+                    "default": "127.0.0.1",
+                    "type": "string"
+                },
+                "port": {
+                    "title": "Port",
+                    "description": "The port on the redis host to connect to",
+                    "default": 6379,
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
+                },
+                "db": {
+                    "title": "Db",
+                    "description": "The redis schema/db to communicate with",
+                    "default": 0,
+                    "type": "integer"
+                },
+                "username": {
+                    "title": "Username",
+                    "description": "The name of the user to connect to the redis instance as",
+                    "type": "string"
+                },
+                "ssl_configuration": {
+                    "$ref": "#/definitions/SSLConfiguration"
+                }
+            }
+        },
+        "MessageDesignation": {
+            "title": "MessageDesignation",
+            "description": "Represents information used to find a message type",
+            "type": "object",
+            "properties": {
+                "module_name": {
+                    "title": "Module Name",
+                    "type": "string"
+                },
+                "name": {
+                    "title": "Name",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "module_name",
+                "name"
+            ]
+        },
+        "CodeDesignation": {
+            "title": "CodeDesignation",
+            "description": "Represents information used to find a function to call",
+            "type": "object",
+            "properties": {
+                "module_name": {
+                    "title": "Module Name",
+                    "description": "What module contains the code of interest",
+                    "type": "string"
+                },
+                "name": {
+                    "title": "Name",
+                    "description": "The name of the code to be invoked",
+                    "type": "string"
+                },
+                "kwargs": {
+                    "title": "Kwargs",
+                    "type": "object"
+                },
+                "message_type": {
+                    "$ref": "#/definitions/MessageDesignation"
+                }
+            },
+            "required": [
+                "module_name",
+                "name"
+            ]
+        },
+        "EventBusConfiguration": {
+            "title": "EventBusConfiguration",
+            "description": "The required configuration settings representing an event bus",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "title": "Name",
+                    "description": "The name of the Event Bus used to identify its purpose",
+                    "type": "string"
+                },
+                "stream": {
+                    "title": "Stream",
+                    "description": "A bus specific name for what stream to listen to. Defaults to the globally configured stream",
+                    "type": "string"
+                },
+                "handlers": {
+                    "title": "Handlers",
+                    "description": "Lists of event handlers mapped to their event name",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/CodeDesignation"
+                        }
+                    }
+                },
+                "redis_configuration": {
+                    "title": "Redis Configuration",
+                    "description": "A Bus specific configuration for how to communicate with Redis",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/RedisConfiguration"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "name",
+                "handlers"
+            ]
+        }
+    }
+}

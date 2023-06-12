@@ -163,10 +163,11 @@ class EventBus:
         results: typing.List[typing.Hashable] = list()
 
         if event_name:
-            event_encountered = False
+            event_handled = False
+            event_defined = event_name in self.__configuration.handlers
 
             for handler in self.__configuration.get_handlers(event_name):
-                event_encountered = True
+                event_handled = True
                 result = None
                 result_created = False
 
@@ -191,7 +192,7 @@ class EventBus:
 
                 processed = True
 
-            if not event_encountered:
+            if event_defined and not event_handled:
                 logging.warning(
                     f"There were no handlers for the '{event_name}' event."
                 )

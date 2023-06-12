@@ -2,6 +2,16 @@
 
 This is a python package designed to facilitate event based communication through Redis Streams.
 
+## How to Run
+
+Running an **Event Stream** application is as simple as calling:
+
+```bash
+$ python ./src/event_stream/application.py example.json
+```
+
+This will launch two very basic busses, along with a master bus that may be used to shut everything down
+
 ## Build
 
 ```bash

@@ -372,7 +372,7 @@ class JSONIntListMessage(Message):
 
 
 class GenericMessage(Message):
-    data = Json[dict]
+    data: dict = Field(description="Unstructured hierarchical data")
 
 
 class ExampleMessage(Message, abc.ABC):

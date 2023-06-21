@@ -1,27 +1,24 @@
 """
 @TODO: Put a module wide description here
 """
-import asyncio
 import os
 import typing
 
-import redis.asyncio as async_redis
 from redis.asyncio.lock import Lock as AsyncRedisLock
 from redis.client import Pipeline
 
 from datetime import timedelta
 
-from configuration.bus import EventBusConfiguration
-from configuration.bus import update_bus
+from event_stream.configuration.bus import EventBusConfiguration
+from event_stream.configuration.bus import update_bus
 from event_stream.configuration import EventBusConfigurations
 from event_stream.configuration.parts import CodeDesignation
+from event_stream.streams.reader import EventStreamReader
 from event_stream.utilities.communication import GroupConsumer
 
 from event_stream.system import logging
 
-from utilities.communication import get_redis_connection_from_configuration
-from utilities.common import decode_stream_message
-from utilities.common import fulfill_method
+from event_stream.utilities.common import fulfill_method
 
 
 MAX_HANDLER_ATTEMPTS = int(os.environ.get("MAX_HANDLER_ATTEMPTS", 5))
@@ -103,54 +100,10 @@ async def clear_handler_records(self, consumer: GroupConsumer, message_id: str):
     await consumer.connection.expire(progress_key, KEY_LIFETIME_SECONDS)
 
 
-class EventBus:
-    def __init__(self, bus_configuration: EventBusConfiguration, verbose: bool = False):
-        self.__configuration = bus_configuration
-        self.__verbose = bool(verbose)
-        self.keep_polling = True
-        self.can_close = False
-        self.current_operation: typing.Optional[asyncio.Task] = None
-
-    def is_allowed_to_close(self):
-        return self.can_close
-
-    async def close(self):
-        connection: async_redis.Redis = await get_redis_connection_from_configuration(
-            self.__configuration.redis_configuration
-        )
-
-        pending_messages = connection.xpending(self.__configuration.stream, self.__configuration.get_group())
-
-        await connection.xgroup_destroy(self.__configuration.stream, self.__configuration.get_group())
-
-    @property
-    def name(self) -> str:
-        return self.__configuration.name
-
-    @property
-    def verbose(self) -> bool:
-        return self.__verbose
-
+class EventBus(EventStreamReader):
     @property
     def configuration(self) -> EventBusConfiguration:
-        return self.__configuration
-
-    def stop_polling(self):
-        self.keep_polling = False
-
-    def launch(self) -> asyncio.Task:
-        task = asyncio.create_task(self.listen(), name=self.name)
-        self.current_operation = task
-        return task
-
-    async def process_response(
-        self,
-        consumer: GroupConsumer,
-        handler: CodeDesignation,
-        message_id: str,
-        result: typing.Any
-    ):
-        pass
+        return self._configuration
 
     async def process_message(
         self,
@@ -164,9 +117,9 @@ class EventBus:
 
         if event_name:
             event_handled = False
-            event_defined = event_name in self.__configuration.handlers
+            event_defined = event_name in self.configuration.handlers
 
-            for handler in self.__configuration.get_handlers(event_name):
+            for handler in self.configuration.get_handlers(event_name):
                 event_handled = True
                 result = None
                 result_created = False
@@ -200,53 +153,10 @@ class EventBus:
         else:
             logging.warning(
                 f"No event name was passed in message '{message_id}' "
-                f"in the '{self.__configuration.stream}' stream"
+                f"in the '{self.configuration.stream}' stream"
             )
 
-        if processed:
-            await consumer.acknowledge_message_processed(message_id)
-
-    async def listen(self):
-        connection: async_redis.Redis = await get_redis_connection_from_configuration(
-            self.__configuration.redis_configuration
-        )
-
-        self.keep_polling = True
-
-        async with connection:
-            if self.verbose:
-                logging.info(
-                    f"The '{self.__configuration.name}' bus is currently listening for messages on the "
-                    f"'{self.__configuration.stream}' channel"
-                )
-
-            consumer = GroupConsumer(
-                connection=connection,
-                stream_name=self.__configuration.stream,
-                group_name=self.__configuration.get_group()
-            )
-
-            async with consumer:
-                while self.keep_polling:
-                    # TODO: Place a lock on the returned message or have 'read()' return a lock to ensure that
-                    #  other busses' aren't playing with the message
-                    messages = await consumer.read()
-
-                    # TODO: Figure out why `consumer.read()` is returning None instead of continuing to
-                    #  wait for a message
-                    if messages is None:
-                        logging.error(f"Something went wrong when reading from the stream - waiting and trying again")
-                        await asyncio.sleep(1)
-                        continue
-
-                    for message_id, payload in messages.items():
-                        payload = decode_stream_message(payload)
-                        await self.process_message(consumer, message_id, payload)
-
-                if self.verbose:
-                    logging.info(
-                        f"The '{self.__configuration.name}' bus is no longer listening for messages"
-                    )
+        return results
 
     def __str__(self):
         return str(self.configuration)
@@ -290,9 +200,10 @@ class MasterBus(EventBus):
             master_configuration,
             all_configurations.redis_configuration,
             all_configurations.stream,
-            all_configurations.application_name
+            all_configurations.application_name,
+            all_configurations.application_identifier
         )
-        super().__init__(bus_configuration=master_configuration, verbose=verbose)
+        super().__init__(configuration=master_configuration, verbose=verbose)
 
-    def is_allowed_to_close(self):
+    def can_make_executive_decisions(self):
         return True

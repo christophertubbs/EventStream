@@ -11,14 +11,20 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import root_validator
 
+from event_stream.utilities.constants import TRUE_VALUES
+
 DEFAULT_SYSTEM_CONFIG_PATH = Path(os.environ.get("EVENT_BUS_SYSTEM_CONFIG_PATH", "system_settings.json"))
 DEFAULT_APPLICATION_NAME = os.environ.get("EVENT_BUS_APPLICATION_NAME", "EventBus")
 DEFAULT_DATETIME_FORMAT = os.environ.get("EVENT_BUS_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S%z")
+DEFAULT_INBOX_CONSUMER_NAME = os.environ.get("EVENT_BUS_SENTINEL_CONSUMER_NAME", "sentinel")
+DEFAULT_MASTER_STREAM = os.environ.get("EVENT_BUS_MASTER_STREAM", "MASTER")
 LOG_DIRECTORY = Path(os.environ.get("EVENT_BUS_LOG_DIRECTORY", "../"))
 
-KEY_SEPARATOR = os.environ.get("EVENT_BUS_KEY_SEPARATOR", "::")
+KEY_SEPARATOR = os.environ.get("EVENT_BUS_KEY_SEPARATOR", ":")
 KEY_LIFETIME_SECONDS = timedelta(seconds=int(os.environ.get("EVENT_BUS_LIFETIME_SECONDS", 60 * 60 * 2)))
-DEBUG = os.environ.get("DEBUG_EVENT_BUS", "True").lower() in ("t","y", "true", "on", "1")
+DEBUG = os.environ.get("DEBUG_EVENT_BUS", "True").lower() in TRUE_VALUES
+
+MAX_IDLE_TIME_MS = int(os.environ.get("EVENT_BUS_IDLE_TIME_MS", 1000 * 60 * 10))
 
 
 class _SystemSettings(BaseModel):
@@ -29,12 +35,12 @@ class _SystemSettings(BaseModel):
     datetime_format: typing.Optional[str] = Field(default=DEFAULT_DATETIME_FORMAT)
     debug: typing.Optional[bool] = Field(default=DEBUG)
     log_directory: typing.Optional[typing.Union[str, Path]] = Field(default=LOG_DIRECTORY)
+    consumer_inbox_name: typing.Optional[str] = Field(default=DEFAULT_INBOX_CONSUMER_NAME)
+    master_stream: typing.Optional[str] = Field(default=DEFAULT_MASTER_STREAM)
+    max_idle_time: typing.Optional[int] = Field(default=MAX_IDLE_TIME_MS)
 
     @root_validator
     def _ensure_defaults(cls, values):
-        if not values.get("application_name"):
-            values['application_name'] = DEFAULT_APPLICATION_NAME
-
         if not values.get("key_prefix"):
             values['key_prefix'] = values['application_name']
 

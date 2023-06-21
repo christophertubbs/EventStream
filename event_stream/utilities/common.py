@@ -8,20 +8,150 @@ import inspect
 import importlib
 import json
 import math
+import random
 
 from types import ModuleType
 
 from .constants import INTEGER_PATTERN
 from .constants import FLOATING_POINT_PATTERN
+from .constants import TRUE_VALUES
+from .constants import IDENTIFIER_SAMPLE_SET
+from .constants import IDENTIFIER_LENGTH
+
 from .types import CodeDesignationProtocol
-from .types import HANDLER_FUNCTION
 from .types import T
+from .types import R
 from .types import PAYLOAD
+from .types import P
 
 _IMPORTED_LIBRARIES: typing.Dict[str, ModuleType] = dict()
 
 
-def get_current_function_name(parent_name: bool = None) -> str:
+def generate_identifier(length: int = None, separator: str = None, sample: typing.Iterable = None) -> str:
+    if length is None:
+        length = IDENTIFIER_LENGTH
+
+    if separator is None:
+        separator = ""
+
+    if sample is None:
+        sample = IDENTIFIER_SAMPLE_SET
+
+    return separator.join([
+        str(random.choice(sample))
+        for _ in range(length)
+    ])
+
+
+def on_each(
+    func: typing.Union[typing.Callable[[T, P], R], typing.Callable[[T], R]],
+    values: typing.Iterable[T],
+    *args,
+    predicate: typing.Callable[[T], bool] = None,
+    **kwargs,
+) -> typing.Sequence[R]:
+    """
+    Calls a function on every member in a collection. Differs from functions like `map` in that it ensures that the
+    function is called on every member prior to returning whereas the function is only called on demand with
+    functions like `map`
+
+    Args:
+        func: The function to call
+        values: The elements to call te function on
+        *args: The *args parameter to insert into every function call
+        predicate: Keyword only argument giving a function to limit what objects to call the function on
+        **kwargs: The **kwargs parameter to insert into every function call
+
+    Returns:
+        The results of each function call
+    """
+    if values is None:
+        return list()
+
+    if isinstance(values, (str, bytes)) or not isinstance(values, typing.Iterable):
+        raise ValueError(
+            f"Cannot call a function on every object in a collection - received a {values.__class__.__name__}"
+            f" instead of a standard iterable object"
+        )
+
+    results: typing.List[R] = list()
+    has_args = len(args) > 0
+    has_kwargs = len(kwargs) > 0
+
+    for value in values:
+        if predicate and not predicate(value):
+            continue
+
+        if has_args and has_kwargs:
+            result = func(value, *args, **kwargs)
+        elif has_kwargs:
+            result = func(value, **kwargs)
+        elif has_args:
+            result = func(value, *args)
+        else:
+            result = func(value)
+
+        results.append(result)
+
+    return results
+
+
+def is_true(value: typing.Union[str, int, bytes, bool, float], *, minimum_truth: float = None) -> bool:
+    """
+    Determine if a generally non-boolean value is True or False
+
+    Args:
+        value: A value that might represent a true or false value
+        minimum_truth: The minimum value to be considered as true when checking floats
+
+    Examples:
+         >>> is_true("true")
+         True
+         >>> is_true("False")
+         False
+         >>> is_true(True)
+         True
+         >>> is_true("off")
+         False
+         >>> is_true("ON")
+         True
+         >>> is_true(1)
+         True
+         >>> is_true(0)
+         False
+         >>> is_true(b'0')
+         True
+         >>> is_true(0.001)
+         False
+         >>> is_true(0.97)
+         True
+         >>> is_true(0.72, minimum_truth=0.7)
+         True
+         >>> is_true(0.72, minimum_truth=0.72001)
+         False
+
+    Returns:
+        Whether the value should be considered as `True`
+    """
+    if value is None:
+        return False
+
+    if isinstance(value, bytes):
+        value = value.decode()
+
+    if isinstance(value, str) and value == "":
+        return False
+
+    if isinstance(value, int):
+        return value != 0
+
+    if isinstance(value, float):
+        return value > (minimum_truth if isinstance(minimum_truth, typing.SupportsFloat) else 0.3)
+
+    return value in TRUE_VALUES
+
+
+def get_current_function_name(parent_name: bool = None, frame_index: int = None) -> str:
     """
     Gets the name of the current function (i.e. the function that calls `get_current_function_name`)
 
@@ -38,20 +168,15 @@ def get_current_function_name(parent_name: bool = None) -> str:
 
     Args:
         parent_name: Whether to get the caller of the caller that tried to get a name
+        frame_index: An optional index to retrieve data from rather than evaluating it
 
     Returns:
         The name of the current function
     """
-    stack: typing.List[inspect.FrameInfo] = inspect.stack()
+    stack: typing.List[inspect.FrameInfo] = inspect.stack()[1:]
 
-    # Get the info for the second object in the stack - the first frame listed will be for THIS function
-    # (`get_current_function_name`)
-    if not parent_name:
-        frame_index = 1
-    else:
-        # Get the info for the third object in the stack - the first frame listed will be for THIS function
-        # (`get_current_function_name`) and the second will be the function that callled `get_current_function_name`
-        frame_index = 2
+    if frame_index is None:
+        frame_index = 1 if parent_name else 0
 
     caller_info: inspect.FrameInfo = stack[frame_index]
     return caller_info.function
@@ -73,6 +198,7 @@ def get_stack_trace() -> typing.List[dict]:
             break
 
     return message_parts
+
 
 def get_module_from_globals(module_name: str) -> typing.Optional[ModuleType]:
     if not module_name:
@@ -171,10 +297,19 @@ def get_code(
 def get_environment_variable(
     variable_name: str,
     error_message: str = None,
-    conversion_function: typing.Callable[[str], T] = None
+    conversion_function: typing.Callable[[str], T] = None,
+    default = None
 ) -> typing.Union[T, str]:
+    if variable_name is None:
+        return variable_name
+
+    original_value = variable_name
+
     while variable_name.startswith("$"):
         variable_name = variable_name[1:]
+
+    if variable_name not in os.environ:
+        return default or original_value
 
     try:
         value = os.environ[variable_name]

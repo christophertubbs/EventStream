@@ -3,25 +3,46 @@
     "description": "A set of different event busses for different channels",
     "type": "object",
     "properties": {
-        "stream": {
-            "title": "Stream",
-            "type": "string"
-        },
         "redis_configuration": {
-            "$ref": "#/definitions/RedisConfiguration"
+            "title": "Redis Configuration",
+            "description": "A globally defined configuration for how to connect to redis.",
+            "allOf": [
+                {
+                    "$ref": "#/definitions/configuration__redis__RedisConfiguration"
+                }
+            ]
         },
         "busses": {
             "title": "Busses",
+            "description": "The busses to launch that will be accepting messages",
+            "uniqueItems": true,
             "type": "array",
             "items": {
                 "$ref": "#/definitions/EventBusConfiguration"
             }
+        },
+        "handlers": {
+            "title": "Handlers",
+            "description": "Handlers that conduct their own atomic asynchronous operations",
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/HandlerGroup"
+            }
+        },
+        "stream": {
+            "title": "Stream",
+            "description": "The name of the default stream to use for all busses unless specifically stated",
+            "default": "EVENTS",
+            "type": "string"
+        },
+        "name": {
+            "title": "Name",
+            "description": "A name for the event bus that may serve as the basis for how to identify all busses",
+            "default": "EventBus",
+            "type": "string"
         }
     },
-    "required": [
-        "stream",
-        "busses"
-    ],
     "definitions": {
         "SSLConfiguration": {
             "title": "SSLConfiguration",
@@ -30,44 +51,59 @@
             "properties": {
                 "ca_path": {
                     "title": "Ca Path",
+                    "description": "The path to a directory containing several CA certificates in PEM format. Defaults to None.",
                     "type": "string"
                 },
                 "ca_file": {
                     "title": "Ca File",
+                    "description": "Path to an ssl certificate. Defaults to None",
                     "type": "string"
                 },
                 "key_file": {
                     "title": "Key File",
+                    "description": "Path to an ssl private key. Defaults to None",
                     "type": "string"
                 },
                 "ca_certs": {
                     "title": "Ca Certs",
+                    "description": "The path to a file of concatenated CA certificates in PEM format. Defaults to None.",
                     "type": "string"
                 }
             }
         },
-        "RedisConfiguration": {
+        "configuration__redis__RedisConfiguration": {
             "title": "RedisConfiguration",
             "description": "Represents the settings needed to connect to a Redis instance and a helpful function used to create a\nconnection to it",
             "type": "object",
             "properties": {
                 "host": {
                     "title": "Host",
+                    "description": "The web address of the machine hosting the redis instance",
                     "default": "127.0.0.1",
                     "type": "string"
                 },
                 "port": {
                     "title": "Port",
+                    "description": "The port on the redis host to connect to",
                     "default": 6379,
-                    "type": "integer"
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
                 },
                 "db": {
                     "title": "Db",
+                    "description": "The redis schema/db to communicate with",
                     "default": 0,
                     "type": "integer"
                 },
                 "username": {
                     "title": "Username",
+                    "description": "The name of the user to connect to the redis instance as",
                     "type": "string"
                 },
                 "ssl_configuration": {
@@ -75,9 +111,49 @@
                 }
             }
         },
-        "CodeDesignation": {
-            "title": "CodeDesignation",
-            "description": "Represents information used to find a function to call",
+        "event_stream__configuration__redis__RedisConfiguration": {
+            "title": "RedisConfiguration",
+            "description": "Represents the settings needed to connect to a Redis instance and a helpful function used to create a\nconnection to it",
+            "type": "object",
+            "properties": {
+                "host": {
+                    "title": "Host",
+                    "description": "The web address of the machine hosting the redis instance",
+                    "default": "127.0.0.1",
+                    "type": "string"
+                },
+                "port": {
+                    "title": "Port",
+                    "description": "The port on the redis host to connect to",
+                    "default": 6379,
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "string"
+                        }
+                    ]
+                },
+                "db": {
+                    "title": "Db",
+                    "description": "The redis schema/db to communicate with",
+                    "default": 0,
+                    "type": "integer"
+                },
+                "username": {
+                    "title": "Username",
+                    "description": "The name of the user to connect to the redis instance as",
+                    "type": "string"
+                },
+                "ssl_configuration": {
+                    "$ref": "#/definitions/SSLConfiguration"
+                }
+            }
+        },
+        "MessageDesignation": {
+            "title": "MessageDesignation",
+            "description": "Represents information used to find a message type",
             "type": "object",
             "properties": {
                 "module_name": {
@@ -87,10 +163,34 @@
                 "name": {
                     "title": "Name",
                     "type": "string"
+                }
+            },
+            "required": [
+                "module_name",
+                "name"
+            ]
+        },
+        "CodeDesignation": {
+            "title": "CodeDesignation",
+            "description": "Represents information used to find a function to call",
+            "type": "object",
+            "properties": {
+                "module_name": {
+                    "title": "Module Name",
+                    "description": "What module contains the code of interest",
+                    "type": "string"
+                },
+                "name": {
+                    "title": "Name",
+                    "description": "The name of the code to be invoked",
+                    "type": "string"
                 },
                 "kwargs": {
                     "title": "Kwargs",
                     "type": "object"
+                },
+                "message_type": {
+                    "$ref": "#/definitions/MessageDesignation"
                 }
             },
             "required": [
@@ -105,14 +205,26 @@
             "properties": {
                 "name": {
                     "title": "Name",
+                    "description": "The name of the listener",
                     "type": "string"
                 },
-                "group": {
-                    "title": "Group",
+                "stream": {
+                    "title": "Stream",
+                    "description": "The name of the stream to read from",
                     "type": "string"
+                },
+                "redis_configuration": {
+                    "title": "Redis Configuration",
+                    "description": "Unique instructions for how to connect to Redis",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/event_stream__configuration__redis__RedisConfiguration"
+                        }
+                    ]
                 },
                 "handlers": {
                     "title": "Handlers",
+                    "description": "Lists of event handlers mapped to their event name",
                     "type": "object",
                     "additionalProperties": {
                         "type": "array",
@@ -120,15 +232,64 @@
                             "$ref": "#/definitions/CodeDesignation"
                         }
                     }
-                },
-                "redis_configuration": {
-                    "$ref": "#/definitions/RedisConfiguration"
                 }
             },
             "required": [
                 "name",
-                "group",
                 "handlers"
+            ]
+        },
+        "HandlerGroup": {
+            "title": "HandlerGroup",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "title": "Name",
+                    "description": "The name of the listener",
+                    "type": "string"
+                },
+                "stream": {
+                    "title": "Stream",
+                    "description": "The name of the stream to read from",
+                    "type": "string"
+                },
+                "redis_configuration": {
+                    "title": "Redis Configuration",
+                    "description": "Unique instructions for how to connect to Redis",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/event_stream__configuration__redis__RedisConfiguration"
+                        }
+                    ]
+                },
+                "event": {
+                    "title": "Event",
+                    "description": "The name of the event to handle",
+                    "type": "string"
+                },
+                "handler": {
+                    "title": "Handler",
+                    "description": "What will handle the incoming message",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/CodeDesignation"
+                        }
+                    ]
+                },
+                "message_type": {
+                    "title": "Message Type",
+                    "description": "A specific specification for how to parse incoming messages",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/MessageDesignation"
+                        }
+                    ]
+                }
+            },
+            "required": [
+                "name",
+                "event",
+                "handler"
             ]
         }
     }

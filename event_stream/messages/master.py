@@ -12,6 +12,8 @@ from event_stream.messages.mixins import UserMixin
 
 class CloseMessage(Message, UserMixin):
     token: SecretStr
+    application_name: str
+    application_instance: str
 
 
 class TrimMessage(Message):
@@ -22,3 +24,10 @@ class TrimMessage(Message):
     output_path: typing.Optional[str]
     filename: typing.Optional[str]
     date_format: typing.Optional[str]
+
+
+class PurgeMessage(Message):
+    stream: str
+    group: str
+    consumer: typing.Optional[str]
+    force: typing.Optional[bool] = Field(False)

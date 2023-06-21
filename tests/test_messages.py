@@ -2,20 +2,15 @@
 @TODO: Put a module wide description here
 """
 import json
-import os
-import typing
 import unittest
-from pprint import pprint
-import traceback
-import inspect
 
-from event_stream import messages
-from event_stream.messages import Message
-from event_stream.messages.base import ValueEvent
-from event_stream.messages.base import ExampleEvent
-from event_stream.messages.master import TrimMessage
-from event_stream.messages.base import JSONIntListMessage
-from event_stream.messages.base import TypedJSONMessage
+import messages
+from messages import Message
+from messages import ValueEvent
+from messages import ExampleEvent
+from messages.master import TrimMessage
+from messages import JSONIntListMessage
+from messages import TypedJSONMessage
 
 class TestMessages(unittest.TestCase):
     def test_generic_message(self):

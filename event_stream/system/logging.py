@@ -21,14 +21,9 @@ from .system import settings
 
 MESSAGE = typing.Union[BaseException, str, dict]
 
-DEFAULT_LOGGER_NAME = os.environ.get("DEFAULT_EVALUATION_LOGGER", settings.application_name.replace(" ", "_"))
+DEFAULT_LOGGER_NAME = os.environ.get("DEFAULT_EVENT_BUS_LOGGER", settings.application_name.replace(" ", "_"))
 """
 The name of the default logger to use when configuring the logging system
-"""
-
-DEFAULT_SOCKET_LOGGER_NAME = os.environ.get("DEFAULT_SOCKET_LOGGER_NAME", "SocketLogger")
-"""
-The name of the default logger intended for use by web sockets
 """
 
 LOGGING_CONFIG = None
@@ -186,41 +181,24 @@ def available_logging_handlers() -> typing.Mapping[str, typing.Type[logging.Hand
     return mapped_handlers
 
 
-def get_socket_log_level() -> str:
-    """
-    Returns:
-        The name of the logging level to use for web sockets
-    """
-    socket_log_level = os.environ.get("EVALUATION_SERVICE_SOCKET_LOG_LEVEL")
-    fallback_log_level = 'WARNING' if settings.debug else 'ERROR'
-
-    if socket_log_level is not None and socket_log_level.upper() not in valid_log_levels():
-        print(f"'{socket_log_level}' is not a valid logging level. Defaulting to '{fallback_log_level}'.")
-        socket_log_level = fallback_log_level
-    elif socket_log_level is None:
-        return fallback_log_level
-
-    return socket_log_level.upper()
-
-
 def get_log_level() -> str:
     """
     Returns:
         The application-wide log level
     """
-    current_log_level = os.environ.get("EVALUATION_SERVICE_LOG_LEVEL")
+    log_level = os.environ.get("EVENT_BUS_LOG_LEVEL", 'DEBUG' if settings.debug else 'INFO')
 
-    if current_log_level is not None and current_log_level.upper() in valid_log_levels():
-        return current_log_level.upper()
-    elif current_log_level is not None:
+    if log_level not in ('', None) and log_level.upper() in valid_log_levels():
+        log_level = log_level.upper()
+    else:
         fallback_level = 'DEBUG' if settings.debug else 'INFO'
-        print(f"{current_log_level.upper()} is not a valid logging level. Defaulting to {fallback_level}")
-        return fallback_level
+        print(f"{log_level.upper()} is not a valid logging level. Defaulting to {fallback_level}")
+        log_level = fallback_level
 
-    return 'DEBUG' if settings.debug else 'INFO'
+    return log_level
 
 
-def get_evaluation_service_logging_filename() -> str:
+def get_application_logging_filename() -> str:
     """
     Gets a suggested name for the core application log filename
 
@@ -229,35 +207,15 @@ def get_evaluation_service_logging_filename() -> str:
     Returns:
         Gets a suggested name for the core application log filename
     """
-    evaluation_service_log_filename = os.environ.get(
+    application_log_filename = os.environ.get(
         'APPLICATION_LOG_PATH',
         os.path.join(settings.log_directory, f'{DEFAULT_LOGGER_NAME}.log')
     )
 
-    if not evaluation_service_log_filename.endswith(".log"):
-        evaluation_service_log_filename += ".log"
+    if not application_log_filename.endswith(".log"):
+        application_log_filename += ".log"
 
-    return evaluation_service_log_filename
-
-
-def get_socket_log_filename() -> str:
-    """
-    Gets the name of the log file for sockets
-
-    Controlled via the optional `EVALUATION_SOCKET_LOG_PATH` environment variable
-
-    Returns:
-        The name of the log file for sockets
-    """
-    socket_log_filename = os.environ.get(
-        "EVALUATION_SOCKET_LOG_PATH",
-        os.path.join(settings.log_directory, "EvaluationSockets.log")
-    )
-
-    if not socket_log_filename.endswith(".log"):
-        socket_log_filename += ".log"
-
-    return socket_log_filename
+    return application_log_filename
 
 
 def get_maximum_log_size() -> int:
@@ -434,33 +392,34 @@ DEFAULT_LOGGING_CONFIGURATION = {
             'datefmt': os.environ.get("LOG_DATEFMT", settings.datetime_format)
         },
     },
-    'root': {
-        'handlers': [f'{DEFAULT_LOGGER_NAME}_Handler', 'stdout'],
-        'level': get_log_level()
+    "root": {
+        "handlers": ["errors", "stdout"],
+        "level": get_log_level()
     },
     'handlers': {
         f'{DEFAULT_LOGGER_NAME}_Handler': create_handler_configuration(
             level=get_log_level(),
-            possible_filename=get_evaluation_service_logging_filename()
-        ),
-        f"{DEFAULT_SOCKET_LOGGER_NAME}_Handler": create_handler_configuration(
-            level=get_socket_log_level(),
-            possible_filename=get_socket_log_filename()
+            possible_filename=get_application_logging_filename()
         ),
         'stdout': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'standard_formatter'
+        },
+        "errors": {
+            "level": "ERROR",
+            "filename": "errors.log",
+            "formatter": "standard_formatter",
+            "class": "logging.handlers.RotatingFileHandler",
+            "maxBytes": get_maximum_log_size(),
+            "backupCount": get_maximum_log_backups()
         }
     },
     'loggers': {
         DEFAULT_LOGGER_NAME: {
             'handlers': [f'{DEFAULT_LOGGER_NAME}_Handler', 'stdout'],
-            'level': get_log_level()
-        },
-        DEFAULT_SOCKET_LOGGER_NAME: {
-            'handlers': [f"{DEFAULT_SOCKET_LOGGER_NAME}_Handler"],
-            'level': get_socket_log_level()
+            'level': get_log_level(),
+            'propagate': False
         }
     }
 }

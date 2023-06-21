@@ -48,6 +48,8 @@ ACCEPTABLE_INPUT_TYPES: Final[Tuple[Type, ...]] = (
     bytes,
 )
 
+MODEL_TYPE = typing.TypeVar("MODEL_TYPE", bound=BaseModel, covariant=True)
+
 EVENT_LITERAL_ADJUSTER = 100
 MAX_STACK_SIZE = 5
 
@@ -198,9 +200,8 @@ class HeaderInfo(BaseModel):
 
         args = {
             "caller_application": sys.argv[0],
-            "caller_function": get_current_function_name(),
+            "caller_function": get_current_function_name(parent_name=True),
             "caller": socket.getfqdn(socket.gethostname()),
-            "platform": str(sys.implementation),
             "date": datetime.now().astimezone().strftime(settings.datetime_format),
             "host": socket.gethostbyname(socket.gethostname())
         }
@@ -213,17 +214,23 @@ class HeaderInfo(BaseModel):
     caller_application: str
     caller_function: str
     caller: str
-    platform: str
-    address: str
     date: datetime
     host: str
 
-    trace: typing.Optional[Json[typing.List[StackInfo]]]
+    trace: typing.Optional[typing.Union[Json[typing.List[StackInfo]], typing.List[StackInfo]]]
 
 
 class Message(WeightedModel, Mapping):
     event: str = Field(description="The event that created this message")
-    header: typing.Optional[Json[HeaderInfo]]
+    message_id: typing.Optional[str] = Field(
+        default=None,
+        description="This ID describing the root of where this message came from"
+    )
+    header: typing.Optional[typing.Union[Json[HeaderInfo], str, HeaderInfo]]
+    application_name: typing.Optional[str]
+    application_instance: typing.Optional[str]
+    response_to: typing.Optional[str]
+    workflow_id: typing.Optional[str] = Field(description="The ID of a workflow if this message is a part of one")
     __extra_data: dict = PrivateAttr(default_factory=dict)
 
     @classmethod
@@ -241,6 +248,32 @@ class Message(WeightedModel, Mapping):
     def get_event(self) -> str:
         return self.event
 
+    @classmethod
+    def from_request(cls, request: Message, application_name: str, application_instance: str, **kwargs):
+        request_data = request.dict()
+        request_data.update(kwargs)
+
+        try:
+            response = cls.parse_obj(request_data)
+            response.response_to = request.get("message_id", None)
+            response.event += "_response"
+            response.application_name = application_name
+            response.application_instance = application_instance
+            return response
+        except BaseException as exception:
+            raise ValueError(
+                f"Cannot create a(n) {cls.__name__} message as a response to a(n) {request.__class__.__name__} "
+                f"message. More information is needed."
+            ) from exception
+
+    def create_response(self, application_name: str, application_instance: str) -> Message:
+        copy = self.__class__.parse_obj(self.dict())
+        copy.event += "_response"
+        copy['response_to'] = copy.get("message_id", None)
+        copy.application_instance = application_instance
+        copy.application_name = application_name
+        return copy
+
     def get_data(self) -> dict:
         return self.__extra_data.copy()
 
@@ -256,27 +289,31 @@ class Message(WeightedModel, Mapping):
             include_header = True
 
         if include_header and self.header is None:
-            self.header = HeaderInfo.create(include_stack=kwargs.get("include_stack"))
+            self.header = HeaderInfo.create(include_stack=kwargs.get("include_stack")).json()
 
         key_value_pairs = self.__extra_data.copy()
-        signature = inspect.signature(self.__class__)
 
         for field_name in self.__fields__.keys():  # types: str
             field_value = getattr(self, field_name)
-            parameter = signature.parameters.get(field_name)
 
-            if parameter and parameter.annotation != parameter.empty:
-                field_annotation = parameter.annotation
-            else:
-                field_annotation = type(name="NotJSONWrapper", bases=tuple(), dict={})
-
-            if field_annotation.__name__ == "JsonWrapperValue" and hasattr(field_annotation, 'inner_type'):
-                if isinstance(field_value, BaseModel):
-                    key_value_pairs[field_name] = field_value.json()
-                else:
+            if field_value is None:
+                continue
+            elif hasattr(field_value, "json") and inspect.isfunction(field_value.json):
+                key_value_pairs[field_name] = field_value.json()
+            elif not isinstance(field_value, (str, bytes, int, float)):
+                try:
                     key_value_pairs[field_name] = json.dumps(field_value)
-            else:
+                except:
+                    key_value_pairs[field_name] = bytes(field_value)
+            elif isinstance(field_value, str):
+                key_value_pairs[field_name] = field_value.encode()
+            elif isinstance(field_value, bytes):
                 key_value_pairs[field_name] = field_value
+            else:
+                try:
+                    key_value_pairs[field_name] = bytes(field_value)
+                except:
+                    key_value_pairs[field_name] = field_value
 
         await connection.xadd(stream_name, fields=key_value_pairs)
 

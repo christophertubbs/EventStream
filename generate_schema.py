@@ -10,7 +10,7 @@ import typing
 
 from argparse import ArgumentParser
 
-from src.event_stream.configuration import EventBusConfigurations
+from configuration import EventBusConfigurations
 
 DEFAULT_SCHEMA_PATH = os.environ.get("EVENT_STREAM_SCHEMA_PATH", "schema.json")
 

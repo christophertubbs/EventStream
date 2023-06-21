@@ -8,9 +8,11 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import validator
 
+from redis.asyncio import Redis
+
 from event_stream.utilities.common import get_environment_variable
-from src.event_stream.configuration.parts import PasswordEnabled
-from src.event_stream.configuration.ssl import SSLConfiguration
+from configuration.parts import PasswordEnabled
+from configuration.ssl import SSLConfiguration
 
 
 class RedisConfiguration(BaseModel, PasswordEnabled):
@@ -37,12 +39,43 @@ class RedisConfiguration(BaseModel, PasswordEnabled):
 
     ssl_configuration: typing.Optional[SSLConfiguration] = None
 
+    @classmethod
     @validator('host', 'port', 'db', 'username')
     def _assign_environment_variables(cls, value):
         if isinstance(value, str) and value.startswith("$"):
             value = os.environ.get(value[1:])
 
         return value
+
+    def connect(self) -> Redis:
+        additional_parameters = dict()
+
+        if self.ssl_configuration is not None:
+            additional_parameters['ssl'] = True
+
+            if self.ssl_configuration.ca_file:
+                additional_parameters['ssl_certfile'] = self.ssl_configuration.ca_file
+
+            if self.ssl_configuration.key_file:
+                additional_parameters['ssl_keyfile'] = self.ssl_configuration.key_file
+
+            if self.ssl_configuration.ca_path:
+                additional_parameters['ssl_ca_path'] = self.ssl_configuration.ca_path
+
+            if self.ssl_configuration.password:
+                additional_parameters['ssl_password'] = self.ssl_configuration.get_password()
+
+            if self.ssl_configuration.ca_certs:
+                additional_parameters['ssl_ca_certs'] = self.ssl_configuration.ca_certs
+
+        return Redis(
+            host=self.host,
+            port=self.port,
+            db=self.db,
+            username=self.username,
+            password=self.get_password(),
+            **additional_parameters
+        )
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

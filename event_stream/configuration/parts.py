@@ -1,9 +1,11 @@
 """
 Provides base classes and mixins for Pydantic Models
 """
+import inspect
 import json
 import typing
 import os
+import typing_extensions
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -68,7 +70,7 @@ class MessageDesignation(BaseModel):
     module_name: str
     name: str
 
-    __found_message_type: typing.Type[messages.Message] = PrivateAttr(None)
+    __found_message_type: typing.Type[types.MessageProtocol] = PrivateAttr(None)
     """
     The found/loaded message type used to parse a message. Not brought in via a validator since it should be loaded 
     after everything else has been imported elsewhere within the code
@@ -81,11 +83,30 @@ class MessageDesignation(BaseModel):
 
         return value
 
+    @classmethod
+    def from_message_type(cls, message_type: typing.Type):
+        if not issubclass(message_type, types.MessageProtocol):
+            raise ValueError(f"A '{str(message_type)}' is not a valid message type")
+
+        module_name = inspect.getmodule(message_type).__name__
+        name = message_type.__name__
+
+        designation = cls(module_name=module_name, name=name)
+        designation.set_message_type(message_type)
+
+        return designation
+
     def parse(self, data: typing.Union[str, bytes, typing.Mapping]) -> messages.Message:
         if self.__found_message_type is None:
-            self.__found_message_type = get_code(self, messages.Message)
+            self.__found_message_type = get_code(self, types.MessageProtocol)
 
-        return self.__found_message_type.parse(data)
+        return self.__found_message_type.parse(data=data)
+
+    def set_message_type(self, message_type: typing.Type):
+        if isinstance(message_type, types.MessageProtocol):
+            self.__found_message_type = message_type
+        else:
+            raise ValueError(f"A '{str(message_type)}' is not a valid message type")
 
     def __hash__(self):
         return hash((self.module_name, self.name))
@@ -98,12 +119,58 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
     """
     Represents information used to find a function to call
     """
+    @classmethod
+    def from_function(
+        cls,
+        handler_function: types.HANDLER_FUNCTION,
+        message_type: typing.Union[typing.Type, MessageDesignation] = None,
+        **kwargs
+    ) -> typing_extensions.Self:
+        types.enforce_handler(handler_function)
+        module_name = inspect.getmodule(handler_function).__name__
+        name = handler_function.__name__
+
+        designation = cls(module_name=module_name, name=name, kwargs=kwargs)
+
+        if type(message_type) == type:
+            designation.message_type = MessageDesignation.from_message_type(message_type=message_type)
+        elif isinstance(message_type, MessageDesignation):
+            designation.message_type = message_type
+
+        designation.set_function(handler_function, already_checked=True)
+
+        return designation
+
     module_name: str = Field(description="What module contains the code of interest")
     name: str = Field(description="The name of the code to be invoked")
     kwargs: typing.Optional[typing.Dict[str, typing.Any]] = Field(default_factory=dict)
     message_type: MessageDesignation = Field(default=None)
 
     __loaded_function: types.HANDLER_FUNCTION = PrivateAttr(None)
+
+    @property
+    def tracker_id(self) -> str:
+        id_parts = [
+            self.module_name,
+            self.name
+        ]
+
+        for name, value in self.kwargs.items():
+            id_parts.append(f"{str(name)}={str(value)}")
+
+        if self.message_type:
+            id_parts.append(f"{self.message_type.module_name}.{self.message_type.name}")
+
+        return ":".join(id_parts)
+
+    @property
+    def loaded_function(self) -> types.HANDLER_FUNCTION:
+        if self.__loaded_function is None:
+            function = get_code(self)
+            types.enforce_handler(function)
+            self.__loaded_function = function
+
+        return self.__loaded_function
 
     @property
     def identifier(self) -> str:
@@ -116,11 +183,18 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
 
         return value
 
-    def __call__(self, connection: Redis, bus: types.BusProtocol, **kwargs):
-        if self.__loaded_function is None:
-            self.__loaded_function = get_code(self)
-            types.enforce_handler(self.__loaded_function)
+    def set_function(self, handler_function: types.HANDLER_FUNCTION, *, already_checked: bool = None):
+        if already_checked is None:
+            already_checked = False
 
+        if not already_checked:
+            types.enforce_handler(handler_function)
+
+        self.__loaded_function = handler_function
+        self.module_name = inspect.getmodule(handler_function).__name__
+        self.name = handler_function.__name__
+
+    def __call__(self, connection: Redis, bus: types.BusProtocol, **kwargs):
         keyword_arguments = self.kwargs.copy()
         keyword_arguments.update(kwargs)
 
@@ -129,17 +203,17 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
         else:
             message = self.message_type.parse(kwargs)
 
-        return self.__loaded_function(connection, bus, message, **self.kwargs)
+        return self.loaded_function(connection, bus, message, **self.kwargs)
 
     def __hash__(self):
         kwargs = json.dumps(self.kwargs) if self.kwargs else None
         return hash((self.module_name, self.name, kwargs, self.message_type))
 
     def __str__(self):
-        arguments = ["connection", "bus", "event"]
+        arguments = ["connection", "bus"]
 
         if self.message_type is None:
-            arguments.append("Most Appropriate Message")
+            arguments.append("message")
         else:
             arguments.append(str(self.message_type))
 

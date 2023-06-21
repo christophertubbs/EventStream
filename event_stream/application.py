@@ -3,16 +3,18 @@
 Launches configured event busses
 """
 import os
-import json
 import pathlib
 import typing
 import asyncio
 
+from event_stream.system import settings
 from argparse import ArgumentParser
 
 from configuration import EventBusConfigurations
-from event_stream.bus import EventBus
-from event_stream.bus import MasterBus
+from event_stream.streams.bus import EventBus
+from event_stream.streams.bus import MasterBus
+from event_stream.streams.handlers import HandlerReader
+from event_stream.streams.handlers import create_master_handlers
 
 MASTER_BUS_CONFIGURATION_PATH = pathlib.Path(
     os.environ.get("MASTER_BUS_CONFIGURATION_PATH", "master_bus_configuration.json")
@@ -24,6 +26,7 @@ class Arguments(object):
         # Replace '__option' with any of the expected arguments
         self.__path: typing.Optional[pathlib.Path] = None
         self.__verbose: bool = False
+        self.__validate: bool = False
 
         self.__parse_command_line(*args)
 
@@ -35,6 +38,10 @@ class Arguments(object):
     @property
     def verbose(self) -> bool:
         return self.__verbose
+
+    @property
+    def validate(self) -> bool:
+        return self.__validate
 
     def __parse_command_line(self, *args):
         parser = ArgumentParser("Put the description of your application here")
@@ -53,6 +60,13 @@ class Arguments(object):
             help="Print verbose information"
         )
 
+        parser.add_argument(
+            "--validate",
+            dest="validate",
+            action="store_true",
+            help="Validate input rather than launching the stream"
+        )
+
         # Parse the list of args if one is passed instead of args passed to the script
         if args:
             parameters = parser.parse_args(args)
@@ -62,6 +76,7 @@ class Arguments(object):
         # Assign parsed parameters to member variables
         self.__path = pathlib.Path(parameters.path).resolve()
         self.__verbose = parameters.verbose
+        self.__validate = parameters.validate
 
         if not (self.__path.exists() and self.__path.is_file()):
             raise ValueError(f"A configuration file could not be found at {str(self.__path)}")
@@ -75,22 +90,39 @@ async def main():
 
     configuration: EventBusConfigurations = EventBusConfigurations.parse_file(arguments.path)
 
-    busses = list()
+    if arguments.validate:
+        print(f"The configuration at '{arguments.path}' was valid")
+        exit(0)
 
-    for bus_configuration in configuration:
-        bus = EventBus(bus_configuration=bus_configuration, verbose=arguments.verbose)
-        busses.append(bus)
+    listeners = list()
 
-    busses.append(MasterBus(all_configurations=configuration, verbose=arguments.verbose))
+    for bus_configuration in configuration.busses:
+        bus = EventBus(configuration=bus_configuration, verbose=arguments.verbose)
+        listeners.append(bus)
 
-    bus_listeners: typing.List[asyncio.Task] = [
+    #listeners.append(MasterBus(all_configurations=configuration, verbose=arguments.verbose))
+
+    for handler_configuration in configuration.handlers:
+        handler = HandlerReader(configuration=handler_configuration, verbose=arguments.verbose)
+        listeners.append(handler)
+
+    listeners.extend(
+        create_master_handlers(
+            application_name=configuration.application_name,
+            application_instance=configuration.application_identifier,
+            stream_name=settings.master_stream,
+            verbose=arguments.verbose
+        )
+    )
+
+    listener_tasks: typing.List[asyncio.Task] = [
         bus.launch()
-        for bus in busses
+        for bus in listeners
     ]
 
     try:
         complete_listening_tasks, pending_listening_tasks = await asyncio.wait(
-            bus_listeners,
+            listener_tasks,
             return_when=asyncio.FIRST_COMPLETED
         )
     except BaseException as e:

@@ -1,6 +1,8 @@
 """
 @TODO: Put a module wide description here
 """
+from __future__ import annotations
+import asyncio
 import inspect
 import typing
 
@@ -22,6 +24,8 @@ from typing import (
     runtime_checkable,
     TypeVar
 )
+
+from typing_extensions import ParamSpec
 
 from redis.asyncio import Redis
 
@@ -59,6 +63,30 @@ class BusConfigurationProtocol(Protocol):
     handlers: Dict[str, List[CodeDesignationProtocol]]
     redis_configuration: Optional[RedisConfigurationProtocol]
 
+    def get_application_name(self, include_instance: bool = False) -> str:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def set_instance_identifier(self, instance_identifier: str):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def get_instance_identifier(self) -> str:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def parent(self):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def set_parent(self, parent):
+        ...
+
+    @property
+    def group(self) -> str:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def consumer_name(self) -> str:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
 
 class BusProtocol(Protocol):
     @property
@@ -73,10 +101,19 @@ class BusProtocol(Protocol):
     def name(self) -> str:
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
+    def launch(self) -> asyncio.Task:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def get_application_name(self) -> str:
+        ...
+
+    def get_instance_identifier(self) -> str:
+        ...
+
     def stop_polling(self):
         ...
 
-    def is_allowed_to_close(self) -> bool:
+    def can_make_executive_decisions(self) -> bool:
         ...
 
 
@@ -96,6 +133,10 @@ class MessageProtocol(Protocol):
         ...
 
     def get_data(self) -> dict:
+        ...
+
+    @classmethod
+    def parse(cls, data: typing.Union[str, bytes, typing.Mapping]):
         ...
 
     def dict(
@@ -120,12 +161,12 @@ HANDLER_FUNCTION = Callable[
         Any,
         ...
     ],
-    str
+    typing.Optional[MessageProtocol]
 ]
 """
 A function meant to operate as an event handler.
 Functions should look like:
-    >>> def func(connection: Redis, bus: EventBus, message: Message, **kwargs) -> str
+    >>> def func(connection: Redis, bus: EventBus, message: Message, **kwargs) -> typing.Optional[Message]
 """
 
 
@@ -134,6 +175,8 @@ STREAM_MESSAGES = List[STREAM_MESSAGE]
 STREAMS = List[Tuple[bytes, STREAM_MESSAGES]]
 
 T = TypeVar("T")
+R = TypeVar("R")
+P = ParamSpec("P")
 
 PAYLOAD = Union[Dict[str, str], Dict[bytes, bytes]]
 
@@ -178,15 +221,17 @@ def type_matches_special_form(
     return False
 
 
-def enforce_handler(possible_handler) -> HANDLER_FUNCTION:
+def enforce_handler(possible_handler: typing.Callable) -> HANDLER_FUNCTION:
     """
-    Decorator used to enforce the correct function signature for handlers
+    Checks a given function to see if it is a valid event handler
+
+    Throws errors if and when the given function does not match the definition of a handler
 
     Args:
-        possible_handler:
+        possible_handler: The handler to check
 
     Returns:
-
+        The original handler
     """
     # TODO: This should be able to be tacked onto functions and fail if their signature doesn't comply
     if not isinstance(possible_handler, Callable):
@@ -211,14 +256,6 @@ def enforce_handler(possible_handler) -> HANDLER_FUNCTION:
             f"The given handler is not valid - "
             f"variable keyword arguments are required and {str(possible_handler)} doesn't accept them."
         )
-
-    function_args = [
-        parameter
-        for parameter in function_parameters
-        if parameter.kind == parameter.VAR_POSITIONAL
-    ]
-
-    has_args = len(function_args) != 0
 
     for index, required_parameter in enumerate(required_parameters):  # type: int, Type
         if required_parameter == Any:
@@ -255,5 +292,47 @@ def enforce_handler(possible_handler) -> HANDLER_FUNCTION:
                 f"The given handler is not valid - "
                 f"Parameter {index} needs to match {str(required_parameter)} but was a {str(annotated_type)}"
             )
+
+    signature_has_return = signature.return_annotation != signature.empty
+
+    if typing.get_origin(return_type) is None and typing.get_origin(signature.return_annotation) is None:
+        return_values_match = isinstance(signature.return_annotation, return_type)
+        return_value_is_a_subclass = issubclass(signature.return_annotation, return_type)
+    elif typing.get_origin(signature.return_annotation) is None:
+        # The return type is a generic and the annotation is not,
+        # so this needs to be compared with 'type_matches_special_form'
+        return_values_match = isinstance(signature.return_annotation, typing.get_args(return_type))
+        return_value_is_a_subclass = issubclass(signature.return_annotation, typing.get_args(return_type))
+    elif typing.get_origin(return_type) is None:
+        # The annotation is generic but the return type is not. A judgement call needs to be made on whether
+        # this is valid. If the given function returns a string or int and the expected return is an int,
+        # this is not correct
+        return_values_match = False
+        return_value_is_a_subclass = False
+    else:
+        # Both are generic and this requires more care - we want it to be true if both return 'optional[int]'
+        # but false if one returns 'Final[int]'
+        encountered_origin = typing.get_origin(signature.return_annotation)
+        expected_origin = typing.get_origin(return_type)
+        if encountered_origin != expected_origin:
+            return_values_match = False
+            return_value_is_a_subclass = False
+        else:
+            encountered_arguments = typing.get_args(signature.return_annotation)
+            expected_arguments = typing.get_args(return_type)
+            return_values_match = False
+            return_value_is_a_subclass = False
+
+            for encountered_argument in encountered_arguments:
+                if isinstance(encountered_argument, expected_arguments):
+                    return_values_match = True
+                if issubclass(encountered_argument, expected_arguments):
+                    return_value_is_a_subclass = True
+
+    if signature_has_return and not (return_values_match or return_value_is_a_subclass):
+        raise ValueError(
+            f"The given handler is not valid - it must return some form of {return_type.__name__} "
+            f"but the given handler instead returns a {signature.return_annotation.__name__}"
+        )
 
     return possible_handler

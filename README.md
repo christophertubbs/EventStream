@@ -22,8 +22,10 @@ For example:
 from uuid import uuid1
 
 import event_stream.handlers
-from configuration.parts import CodeDesignation
-from configuration.group import HandlerGroup
+from event_stream.configuration.parts import CodeDesignation
+from event_stream.configuration.group import HandlerGroup
+
+from event_stream.streams.handlers import HandlerReader
 
 handler_config = {
     "name": "Example",
@@ -32,8 +34,10 @@ handler_config = {
     "handler": CodeDesignation.from_function(event_stream.handlers.echo_message)
 }
 
-handler = HandlerGroup.parse_obj(handler_config)
-handler.set_application_name("Whatever Service")
-handler.set_instance_identifier(uuid1())
+handler_configuration = HandlerGroup.parse_obj(handler_config)
+handler_configuration.set_application_name("Whatever Service")
+handler_configuration.set_instance_identifier(str(uuid1()))
+
+handler = HandlerReader(configuration=handler_configuration, verbose=True)
 task = handler.launch()
 ```

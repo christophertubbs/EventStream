@@ -19,14 +19,20 @@ just keeping track and managing that task as everything is going on.
 For example:
 
 ```python
+from uuid import uuid1
+
+import event_stream.handlers
+from configuration.parts import CodeDesignation
+from configuration.group import HandlerGroup
+
 handler_config = {
     "name": "Example",
     "event": "execution_complete",
     "stream": "EVENTS",
-    "handler": CodeDesignation.from_function(some.module.do_something)
+    "handler": CodeDesignation.from_function(event_stream.handlers.echo_message)
 }
 
-handler = HandlerGroup.parse(handler_config)
+handler = HandlerGroup.parse_obj(handler_config)
 handler.set_application_name("Whatever Service")
 handler.set_instance_identifier(uuid1())
 task = handler.launch()

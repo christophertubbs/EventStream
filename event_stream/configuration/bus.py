@@ -1,5 +1,5 @@
 """
-@TODO: Put a module wide description here
+Defines configuration objects defining how a Bus listener and a collection of listeners should behave
 """
 from __future__ import annotations
 import os

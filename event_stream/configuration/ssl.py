@@ -1,5 +1,5 @@
 """
-@TODO: Put a module wide description here
+Defines settings that may be used to define how SSL should be handled
 """
 import typing
 import os

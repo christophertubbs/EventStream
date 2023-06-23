@@ -213,6 +213,12 @@
                     "description": "The name of the stream to read from",
                     "type": "string"
                 },
+                "unique": {
+                    "title": "Unique",
+                    "description": "Whether this listener in this application should be considered unique across all instances. Non-unique avoid duplicate activity while Unique activities should run on every application instance",
+                    "default": false,
+                    "type": "boolean"
+                },
                 "redis_configuration": {
                     "title": "Redis Configuration",
                     "description": "Unique instructions for how to connect to Redis",
@@ -252,6 +258,12 @@
                     "title": "Stream",
                     "description": "The name of the stream to read from",
                     "type": "string"
+                },
+                "unique": {
+                    "title": "Unique",
+                    "description": "Whether this listener in this application should be considered unique across all instances. Non-unique avoid duplicate activity while Unique activities should run on every application instance",
+                    "default": false,
+                    "type": "boolean"
                 },
                 "redis_configuration": {
                     "title": "Redis Configuration",

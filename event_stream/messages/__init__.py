@@ -1,7 +1,6 @@
 """
 @TODO: Put a module wide description here
 """
-import inspect
 import typing
 
 from collections import Counter
@@ -11,6 +10,7 @@ from .base import ACCEPTABLE_INPUT_TYPES
 
 from .base import Message
 from .base import ParseableModel
+from .base import GenericMessage
 from .basic import ForwardingMessage
 
 from .master import CloseMessage
@@ -48,13 +48,13 @@ def update_message_ranker(ranker: typing.Dict[MESSAGE_TYPE, float]):
     And a `ranker` of:
 
     Example:
-        >>> rnker = Counter()
-        >>> rnker[Body2] = Body2.get_weight()
-        >>> rnker[Body1] = Body1.get_weight()
-        >>> rnker[Body3] = Body3.get_weight()
-        >>> rnker[Body4] = Body4.get_weight()
-        >>> rnker[Body5] = Body5.get_weight()
-        >>> rnker
+        >>> class_ranker: Counter[MESSAGE_TYPE, int] = Counter()
+        >>> class_ranker[Body2] = Body2.get_weight()
+        >>> class_ranker[Body1] = Body1.get_weight()
+        >>> class_ranker[Body3] = Body3.get_weight()
+        >>> class_ranker[Body4] = Body4.get_weight()
+        >>> class_ranker[Body5] = Body5.get_weight()
+        >>> class_ranker
         Counter({
             <class 'Body5'>: 8
             <class 'Body4'>: 7,
@@ -67,8 +67,8 @@ def update_message_ranker(ranker: typing.Dict[MESSAGE_TYPE, float]):
     The result is:
 
     Example:
-        >>> update_message_ranker(rnker)
-        >>> rnker
+        >>> update_message_ranker(class_ranker)
+        >>> class_ranker
         Counter({
             <class 'Body4'>: 13,
             <class 'Body5'>: 11,

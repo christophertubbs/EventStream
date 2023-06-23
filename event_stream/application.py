@@ -12,13 +12,8 @@ from argparse import ArgumentParser
 
 from configuration import EventBusConfigurations
 from event_stream.streams.bus import EventBus
-from event_stream.streams.bus import MasterBus
 from event_stream.streams.handlers import HandlerReader
 from event_stream.streams.handlers import create_master_handlers
-
-MASTER_BUS_CONFIGURATION_PATH = pathlib.Path(
-    os.environ.get("MASTER_BUS_CONFIGURATION_PATH", "master_bus_configuration.json")
-)
 
 
 class Arguments(object):

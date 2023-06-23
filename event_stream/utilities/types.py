@@ -29,7 +29,7 @@ from typing_extensions import ParamSpec
 
 from redis.asyncio import Redis
 
-INCLUDE_EXCLUDE_TYPES = Union[Set[Union[int, str]], Mapping[Union[int, str], Any]]
+INCLUDE_EXCLUDE_TYPES = Union[Set[str], Mapping[str, Any]]
 
 HASHABLE_TYPES = (
     SupportsInt,
@@ -39,6 +39,10 @@ HASHABLE_TYPES = (
     bytes,
     tuple
 )
+
+T = TypeVar("T")
+R = TypeVar("R")
+P = ParamSpec("P")
 
 
 class CodeDesignationProtocol(Protocol):
@@ -56,6 +60,7 @@ class RedisConfigurationProtocol(Protocol):
         ...
 
 
+@typing.runtime_checkable
 class BusConfigurationProtocol(Protocol):
     name: str
     stream: Optional[str]
@@ -88,6 +93,7 @@ class BusConfigurationProtocol(Protocol):
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
 
+@typing.runtime_checkable
 class BusProtocol(Protocol):
     @property
     def configuration(self) -> BusConfigurationProtocol:
@@ -158,8 +164,7 @@ HANDLER_FUNCTION = Callable[
         Redis,
         BusProtocol,
         MessageProtocol,
-        Any,
-        ...
+        typing.Dict[str, typing.Any]
     ],
     typing.Optional[MessageProtocol]
 ]
@@ -173,10 +178,6 @@ Functions should look like:
 STREAM_MESSAGE = Union[int, Tuple[bytes, Dict[bytes, bytes]]]
 STREAM_MESSAGES = List[STREAM_MESSAGE]
 STREAMS = List[Tuple[bytes, STREAM_MESSAGES]]
-
-T = TypeVar("T")
-R = TypeVar("R")
-P = ParamSpec("P")
 
 PAYLOAD = Union[Dict[str, str], Dict[bytes, bytes]]
 

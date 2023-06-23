@@ -1,5 +1,5 @@
 """
-@TODO: Put a module wide description here
+Defines a listener that handles exactly one type of event
 """
 from __future__ import annotations
 import typing

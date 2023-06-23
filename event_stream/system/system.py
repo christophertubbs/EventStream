@@ -18,7 +18,9 @@ DEFAULT_APPLICATION_NAME = os.environ.get("EVENT_BUS_APPLICATION_NAME", "EventBu
 DEFAULT_DATETIME_FORMAT = os.environ.get("EVENT_BUS_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S%z")
 DEFAULT_INBOX_CONSUMER_NAME = os.environ.get("EVENT_BUS_SENTINEL_CONSUMER_NAME", "sentinel")
 DEFAULT_MASTER_STREAM = os.environ.get("EVENT_BUS_MASTER_STREAM", "MASTER")
+DEFAULT_MAX_LENGTH = int(float(os.environ.get("EVENT_BUS_MAX_LENGTH", 100)))
 LOG_DIRECTORY = Path(os.environ.get("EVENT_BUS_LOG_DIRECTORY", "../"))
+BASE_DIRECTORY = Path(os.environ.get("EVENT_BUS_BASE_DIRECTORY", "../"))
 
 KEY_SEPARATOR = os.environ.get("EVENT_BUS_KEY_SEPARATOR", ":")
 KEY_LIFETIME_SECONDS = timedelta(seconds=int(os.environ.get("EVENT_BUS_LIFETIME_SECONDS", 60 * 60 * 2)))
@@ -38,6 +40,8 @@ class _SystemSettings(BaseModel):
     consumer_inbox_name: typing.Optional[str] = Field(default=DEFAULT_INBOX_CONSUMER_NAME)
     master_stream: typing.Optional[str] = Field(default=DEFAULT_MASTER_STREAM)
     max_idle_time: typing.Optional[int] = Field(default=MAX_IDLE_TIME_MS)
+    base_directory: typing.Optional[typing.Union[str, Path]] = Field(default=BASE_DIRECTORY)
+    approximate_max_stream_length: typing.Optional[int] = Field(default=DEFAULT_MAX_LENGTH)
 
     @root_validator
     def _ensure_defaults(cls, values):

@@ -7,12 +7,12 @@ from redis.asyncio import Redis
 
 
 from event_stream.messages.basic import ForwardingMessage
-from event_stream.utilities.types import BusProtocol
+from utilities.types import ReaderProtocol
 
 
 async def forward_message(
     connection: Redis,
-    bus: BusProtocol,
+    reader: ReaderProtocol,
     message: ForwardingMessage,
     include_header: bool = None,
     **kwargs

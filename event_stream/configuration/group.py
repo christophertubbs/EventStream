@@ -14,6 +14,9 @@ from event_stream.system import settings
 
 
 class HandlerGroup(ListenerConfiguration):
+    def handles_event(self, event_name: str) -> bool:
+        return event_name == self.event or event_name in self.handler.aliases
+
     def get_tracker_ids(self, event_name: str) -> typing.Iterable[str]:
         return [self.handler.tracker_id]
 

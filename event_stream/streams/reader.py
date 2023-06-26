@@ -20,38 +20,81 @@ LISTENER_CONFIGURATION = typing.TypeVar("LISTENER_CONFIGURATION", bound=Listener
 
 
 class EventStreamReader(abc.ABC, typing.Generic[LISTENER_CONFIGURATION]):
+    """
+    Base class used for reading from Redis Streams
+    """
     def __init__(self, configuration: LISTENER_CONFIGURATION, verbose: bool = False):
+        """
+        Constructor
+
+        Args:
+            configuration: The configuration responsible for defining how this reader should behave
+            verbose: Whether the reader should output extra messages for insight
+        """
         self.__verbose = is_true(verbose)
+        """Whether the reader should output extra messages for insight"""
+
         self._configuration: LISTENER_CONFIGURATION = configuration
+        """The configuration responsible for defining how this reader should behave"""
+
         self.__keep_polling = True
+        """Indicator that the loop should keep running if it already is"""
+
         self.__current_operation: typing.Optional[asyncio.Task] = None
+        """An asynchronous reading task created via the launch command"""
+
         self.__most_recent_message: typing.Optional[str] = None
+        """The ID of the most recently processed message from a redis stream"""
 
     @property
     def verbose(self) -> bool:
+        """
+        Whether the reader should output extra messages for insight
+        """
         return self.__verbose
 
     @property
     def name(self) -> str:
+        """
+        The name for this reader
+        """
         return self._configuration.name
 
     @property
     def can_make_executive_decisions(self):
+        """
+        Whether handlers within this reader may make important system wide decisions
+        """
         return False
 
     @property
     def configuration(self) -> LISTENER_CONFIGURATION:
+        """
+        The configuration responsible for defining how this reader should behave
+        """
         return self._configuration
 
     def stop_polling(self):
+        """
+        Stop the reader from continuing to poll the redis stream
+        """
         self.__keep_polling = False
 
     def launch(self) -> asyncio.Task:
+        """
+        Launch a new reader task
+
+        Returns:
+            An asynchronous task that will allow reading to occur in the background
+        """
         task = asyncio.create_task(self.listen(), name=self.configuration.name)
         self.__current_operation = task
         return task
 
     async def close(self):
+        """
+        Stop polling and end operations within a currently running operation
+        """
         still_running = self.__current_operation is not None
         still_running = still_running and not self.__current_operation.cancelling()
         still_running = still_running and not self.__current_operation.done()
@@ -70,7 +113,16 @@ class EventStreamReader(abc.ABC, typing.Generic[LISTENER_CONFIGURATION]):
         consumer: GroupConsumer,
         message_id: str,
         result: typing.Any
-    ) -> typing.Any:
+    ):
+        """
+        Process responses to processed requests
+
+        Args:
+            consumer: The consumer providing the redis connection and communication details
+            message_id: The ID of the message that served as the request
+            result: Data created in reaction to a request
+        """
+        # Send the result if it was a message
         if isinstance(result, Message):
             if result.response_to is None:
                 result.response_to = message_id
@@ -83,9 +135,23 @@ class EventStreamReader(abc.ABC, typing.Generic[LISTENER_CONFIGURATION]):
         message_id: str,
         payload: typing.Dict[str, typing.Any]
     ) -> typing.Optional[typing.Union[typing.Sequence, Message, BaseException]]:
+        """
+        Interpret an incoming message
+
+        Args:
+            consumer: The consumer providing the redis connection and communication details
+            message_id: The ID of the incoming message
+            payload: The data that arrived with the message
+
+        Returns:
+            The results of all called handlers
+        """
         ...
 
     async def listen(self):
+        """
+        Poll the redis stream and bring back relevant messages
+        """
         connection: Redis = await get_redis_connection_from_configuration(
             self._configuration.redis_configuration
         )
@@ -163,8 +229,7 @@ class EventStreamReader(abc.ABC, typing.Generic[LISTENER_CONFIGURATION]):
                 if self.__verbose:
                     logging.info(
                         f"The '{self._configuration.name}' reader in "
-                        f"'{self.configuration.get_application_name()}:{self.configuration.get_instance_identifier()}' "
-                        f"is no longer listening for messages"
+                        f"'{self.configuration.get_application_name()} is no longer listening for messages"
                     )
 
 

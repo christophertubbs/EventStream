@@ -24,6 +24,9 @@ class EventBusConfiguration(ListenerConfiguration):
     The required configuration settings representing an event bus
     """
 
+    def handles_event(self, event_name: str) -> bool:
+        return event_name in self.handlers
+
     def get_tracker_ids(self, event_name: str) -> typing.Iterable[str]:
         if event_name in self.handlers:
             return [handler.tracker_id for handler in self.get_handlers(event_name=event_name)]

@@ -16,7 +16,7 @@ from event_stream.utilities.constants import TRUE_VALUES
 DEFAULT_SYSTEM_CONFIG_PATH = Path(os.environ.get("EVENT_BUS_SYSTEM_CONFIG_PATH", "system_settings.json"))
 DEFAULT_APPLICATION_NAME = os.environ.get("EVENT_BUS_APPLICATION_NAME", "EventBus")
 DEFAULT_DATETIME_FORMAT = os.environ.get("EVENT_BUS_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S%z")
-DEFAULT_INBOX_CONSUMER_NAME = os.environ.get("EVENT_BUS_SENTINEL_CONSUMER_NAME", "sentinel")
+DEFAULT_INBOX_CONSUMER_NAME = os.environ.get("EVENT_BUS_SENTINEL_CONSUMER_NAME", "inbox")
 DEFAULT_MASTER_STREAM = os.environ.get("EVENT_BUS_MASTER_STREAM", "MASTER")
 DEFAULT_MAX_LENGTH = int(float(os.environ.get("EVENT_BUS_MAX_LENGTH", 100)))
 LOG_DIRECTORY = Path(os.environ.get("EVENT_BUS_LOG_DIRECTORY", "../"))

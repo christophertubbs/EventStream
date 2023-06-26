@@ -1,16 +1,12 @@
 """
 Contains common functions
 """
-import abc
 import os
 import typing
 import inspect
-import importlib
 import json
 import math
 import random
-
-from types import ModuleType
 
 from .constants import INTEGER_PATTERN
 from .constants import FLOATING_POINT_PATTERN
@@ -18,13 +14,10 @@ from .constants import TRUE_VALUES
 from .constants import IDENTIFIER_SAMPLE_SET
 from .constants import IDENTIFIER_LENGTH
 
-from .types import CodeDesignationProtocol
 from .types import T
 from .types import R
 from .types import PAYLOAD
 from .types import P
-
-_IMPORTED_LIBRARIES: typing.Dict[str, ModuleType] = dict()
 
 
 def generate_identifier(length: int = None, separator: str = None, sample: typing.Iterable = None) -> str:
@@ -200,23 +193,6 @@ def get_stack_trace() -> typing.List[dict]:
     return message_parts
 
 
-def get_module_from_globals(module_name: str) -> typing.Optional[ModuleType]:
-    if not module_name:
-        return None
-
-    split_name = module_name.strip().split(".")
-
-    place_to_search = globals()
-
-    for name_part in split_name:
-        if isinstance(place_to_search, typing.Mapping):
-            place_to_search = place_to_search.get(name_part, dict())
-        else:
-            place_to_search = getattr(place_to_search, name_part, dict())
-
-    return place_to_search if place_to_search else None
-
-
 def get_by_path(data: typing.Dict[str, typing.Any], *path, default=None):
     found_data = data
     last_index = len(path) - 1
@@ -236,62 +212,6 @@ def get_by_path(data: typing.Dict[str, typing.Any], *path, default=None):
             return default
 
     return found_data
-
-
-
-def get_code(
-    designation: CodeDesignationProtocol,
-    base_class: typing.Type[T] = None
-) -> typing.Union[typing.Type[T], typing.Callable]:
-    """
-    Find an object based off a module name and name
-
-    Args:
-        designation: The configuration stating what to look for
-        base_class: The base class that the found object must comply with
-
-    Returns:
-        A type, variable, or
-    """
-    if designation.module_name in _IMPORTED_LIBRARIES:
-        module = _IMPORTED_LIBRARIES[designation.module_name]
-    else:
-        module = get_module_from_globals(designation.module_name)
-
-        if module is None:
-            module = importlib.import_module(designation.module_name)
-            _IMPORTED_LIBRARIES[designation.module_name] = module
-
-    if module is None:
-        raise Exception(
-            f"No modules could be found at {designation.module_name}."
-            f"Please check the configuration to check to see if it was correct."
-        )
-
-    code = getattr(module, designation.name, None)
-
-    if code is None:
-        members = [
-            (member_name, member)
-            for member_name, member in inspect.getmembers(module)
-            if member_name == designation.name
-        ]
-
-        if len(members) > 0:
-            code = members[0]
-
-    if base_class and not (issubclass(code, base_class) or isinstance(code, base_class)):
-        raise ValueError(
-            f"The found object ('{str(code)}') from '{str(designation)}' "
-            f"does not match the required base class ('{str(base_class)}')"
-        )
-
-    if code is not None:
-        return code
-
-    raise Exception(
-        f"No valid types or functions could be found in {designation.module_name}. Please check the configuration."
-    )
 
 
 def get_environment_variable(

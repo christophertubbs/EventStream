@@ -11,8 +11,8 @@ from pydantic import validator
 from redis.asyncio import Redis
 
 from event_stream.utilities.common import get_environment_variable
-from configuration.parts import PasswordEnabled
-from configuration.ssl import SSLConfiguration
+from event_stream.configuration.parts import PasswordEnabled
+from event_stream.configuration.ssl import SSLConfiguration
 
 
 class RedisConfiguration(BaseModel, PasswordEnabled):

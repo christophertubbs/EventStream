@@ -15,7 +15,6 @@ from pydantic import validator
 from redis.asyncio import Redis
 
 import event_stream.utilities.types as types
-from event_stream.utilities.common import get_code
 from event_stream import messages
 
 from event_stream.system import logging
@@ -98,7 +97,7 @@ class MessageDesignation(BaseModel):
 
     def parse(self, data: typing.Union[str, bytes, typing.Mapping]) -> messages.Message:
         if self.__found_message_type is None:
-            self.__found_message_type = get_code(self, types.MessageProtocol)
+            self.__found_message_type = types.get_code(self, types.MessageProtocol)
 
         return self.__found_message_type.parse(data=data)
 
@@ -149,6 +148,15 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
     __loaded_function: types.HANDLER_FUNCTION = PrivateAttr(None)
 
     @property
+    def aliases(self) -> typing.Sequence[str]:
+        operation_aliases: typing.List[str] = list()
+
+        for alias in getattr(self.loaded_function, "aliases", list()):
+            operation_aliases.append(alias)
+
+        return operation_aliases
+
+    @property
     def tracker_id(self) -> str:
         id_parts = [
             self.module_name,
@@ -166,7 +174,7 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
     @property
     def loaded_function(self) -> types.HANDLER_FUNCTION:
         if self.__loaded_function is None:
-            function = get_code(self)
+            function = types.get_code(self)
             types.enforce_handler(function)
             self.__loaded_function = function
 
@@ -194,7 +202,7 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
         self.module_name = inspect.getmodule(handler_function).__name__
         self.name = handler_function.__name__
 
-    def __call__(self, connection: Redis, bus: types.BusProtocol, **kwargs):
+    def __call__(self, connection: Redis, reader: types.ReaderProtocol, **kwargs):
         keyword_arguments = self.kwargs.copy()
         keyword_arguments.update(kwargs)
 
@@ -203,14 +211,14 @@ class CodeDesignation(BaseModel, types.HANDLER_FUNCTION):
         else:
             message = self.message_type.parse(kwargs)
 
-        return self.loaded_function(connection, bus, message, **self.kwargs)
+        return self.loaded_function(connection, reader, message, **self.kwargs)
 
     def __hash__(self):
         kwargs = json.dumps(self.kwargs) if self.kwargs else None
         return hash((self.module_name, self.name, kwargs, self.message_type))
 
     def __str__(self):
-        arguments = ["connection", "bus"]
+        arguments = ["connection", "reader"]
 
         if self.message_type is None:
             arguments.append("message")

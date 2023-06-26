@@ -31,7 +31,7 @@ class HandlerReader(EventStreamReader):
         processed = False
         result = None
 
-        if event_name == self.configuration.event:
+        if self.configuration.handles_event(event_name):
             try:
                 result = await fulfill_method(self.configuration.handler, consumer.connection, self, **payload)
                 processed = True

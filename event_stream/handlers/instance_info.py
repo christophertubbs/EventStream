@@ -1,13 +1,13 @@
 """
-Defines functions related to interpretting and manipulating data about application instances
+Defines functions related to interpreting and manipulating data about application instances
 """
 from redis.asyncio import Redis
 
-from event_stream.utilities.types import BusProtocol
 from event_stream.messages.base import Message
+from utilities.types import ReaderProtocol
 
 
-def print_instance_info(connection: Redis, bus: BusProtocol, message: Message, **kwargs):
+def print_instance_info(connection: Redis, reader: ReaderProtocol, message: Message, **kwargs):
     """
     Prints information about a message's given application name and instance
 
@@ -15,7 +15,7 @@ def print_instance_info(connection: Redis, bus: BusProtocol, message: Message, *
 
     Args:
         connection:
-        bus:
+        reader:
         message:
         **kwargs:
     """

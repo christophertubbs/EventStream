@@ -1,16 +1,17 @@
 """
-@TODO: Put a module wide description here
+Defines the most basic event handler - one that just prints data to stdout
 """
-import typing
 
 from redis.asyncio import Redis
 
-from event_stream.utilities.types import BusProtocol
 from event_stream.messages import Message
+from utilities.types import ReaderProtocol
+from utilities.types import event_handler
 
 
-def echo_message(connection: Redis, bus: BusProtocol, message: Message, **kwargs) -> Message:
-    print(f"The '{message.event}' event has been triggered on a(n) '{bus.__class__.__name__}' named '{bus.name}'!")
+@event_handler(aliases="echo")
+def echo_message(connection: Redis, reader: ReaderProtocol, message: Message, **kwargs) -> Message:
+    print(f"The '{message.event}' event has been triggered on a(n) '{reader.__class__.__name__}' named '{reader.name}'!")
     print(f"Message Type: {type(message)}")
     print(f"Fields:")
     for field_name, field_metadata in message.__fields__.items():
@@ -31,8 +32,8 @@ def echo_message(connection: Redis, bus: BusProtocol, message: Message, **kwargs
 
     if kwargs.get("transmit_response", False):
         response = message.create_response(
-            application_instance=bus.get_instance_identifier(),
-            application_name=bus.get_application_name()
+            application_instance=reader.configuration.get_instance_identifier(),
+            application_name=reader.configuration.get_application_name()
         )
     else:
         response = None

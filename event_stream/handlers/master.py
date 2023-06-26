@@ -15,16 +15,16 @@ from event_stream.messages.master import PurgeMessage
 from event_stream.messages.master import TrimMessage
 from event_stream.utilities.common import decode_stream_message
 from event_stream.utilities.communication import transfer_messages_to_inbox
-from event_stream.utilities.types import BusProtocol
 from event_stream.messages.master import CloseMessage
 from event_stream.system import logging
-
+from streams.reader import EventStreamReader
+from utilities.types import event_handler
 
 DEFAULT_STREAM_RECORD_LOCATION = Path(os.environ.get("DEFAULT_EVENT_BUS_RECORD_DIRECTORY", "event_records"))
 DEFAULT_MAX_STREAM_LENGTH = int(os.environ.get("DEFAULT_MAX_STREAM_LENGTH", "500"))
 
 
-async def trim_streams(connection: Redis, bus: BusProtocol, message: TrimMessage, **kwargs):
+async def trim_streams(connection: Redis, bus: EventStreamReader, message: TrimMessage, **kwargs):
     """
     This should get the records beyond a given point, write those events out to an agreed upon location,
     and remove the records from the stream
@@ -69,7 +69,7 @@ async def trim_streams(connection: Redis, bus: BusProtocol, message: TrimMessage
     await connection.xtrim(bus.configuration.stream, maxlen=count, approximate=True)
 
 
-async def purge_consumers(connection: Redis, bus: BusProtocol, message: PurgeMessage, **kwargs):
+async def purge_consumers(connection: Redis, bus: EventStreamReader, message: PurgeMessage, **kwargs):
     stream_exists = await connection.exists(message.stream)
 
     if not stream_exists:
@@ -131,7 +131,8 @@ async def purge_consumers(connection: Redis, bus: BusProtocol, message: PurgeMes
         )
 
 
-async def get_instance(connection: Redis, bus: BusProtocol, message: Message, **kwargs) -> Message:
+@event_handler(aliases="info")
+async def get_instance(connection: Redis, bus: EventStreamReader, message: Message, **kwargs) -> Message:
     """
     Transmit basic information about this available application instance
 
@@ -150,9 +151,10 @@ async def get_instance(connection: Redis, bus: BusProtocol, message: Message, **
     )
 
 
+@event_handler(aliases="close")
 async def close_streams(
     connection: Redis,
-    bus: BusProtocol,
+    bus: EventStreamReader,
     message: CloseMessage,
     **kwargs
 ):

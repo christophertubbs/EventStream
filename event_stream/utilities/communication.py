@@ -24,7 +24,7 @@ UNPROCESSED_VALUE = "UNPROCESSED"
 
 
 def create_lock(connection: asyncio.Redis, stream_name: str, group_name: str, message_id: str = None) -> Lock:
-    key = f"{group_name}"
+    key = f"{group_name}:LOCK"
 
     if not isinstance(connection, synchronous_redis.Redis):
         # A synchronous connection MUST be used - async version does not await

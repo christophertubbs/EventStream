@@ -95,8 +95,6 @@ async def main():
         bus = EventBus(configuration=bus_configuration, verbose=arguments.verbose)
         listeners.append(bus)
 
-    #listeners.append(MasterBus(all_configurations=configuration, verbose=arguments.verbose))
-
     for handler_configuration in configuration.handlers:
         handler = HandlerReader(configuration=handler_configuration, verbose=arguments.verbose)
         listeners.append(handler)

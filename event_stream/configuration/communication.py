@@ -4,15 +4,11 @@
 from __future__ import annotations
 import typing
 import abc
-import os
-
-from datetime import datetime
 
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import PrivateAttr
 from pydantic import root_validator
-from pydantic import validator
 
 from event_stream.configuration import RedisConfiguration
 from event_stream.system import settings
@@ -64,6 +60,10 @@ class ListenerConfiguration(BaseModel, abc.ABC):
                 values[field_name] = get_environment_variable(values[field_name])
 
         return values
+
+    @abc.abstractmethod
+    def handles_event(self, event_name: str) -> bool:
+        pass
 
     @abc.abstractmethod
     def gather_handler_errors(self) -> typing.Optional[typing.Union[typing.Sequence[str], str]]:

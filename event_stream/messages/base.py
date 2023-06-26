@@ -3,7 +3,6 @@ Defines base classes for messages
 """
 from __future__ import annotations
 
-import logging
 import abc
 import json
 import inspect
@@ -26,7 +25,8 @@ from typing import (
     Type,
     ClassVar,
     Optional,
-    Dict
+    Dict,
+    Set
 )
 
 from pydantic import BaseModel
@@ -34,14 +34,11 @@ from pydantic import Field
 from pydantic import FilePath
 from pydantic import Json
 from pydantic import PrivateAttr
-from pydantic import validator
-from pydantic import ValidationError
 
 from redis.asyncio import Redis
 
 from event_stream.utilities.common import get_by_path
 from event_stream.utilities.common import get_current_function_name
-from event_stream.utilities.types import INCLUDE_EXCLUDE_TYPES
 from event_stream.system.system import settings
 
 ACCEPTABLE_INPUT_TYPES: Final[Tuple[Type, ...]] = (
@@ -715,8 +712,8 @@ class Message(WeightedModel, Mapping):
     def dict(
         self,
         *,
-        include: INCLUDE_EXCLUDE_TYPES = None,
-        exclude: INCLUDE_EXCLUDE_TYPES = None,
+        include: Union[Set[str], Mapping[str, Any]] = None,
+        exclude: Union[Set[str], Mapping[str, Any]] = None,
         by_alias: bool = False,
         exclude_unset: bool = False,
         exclude_defaults: bool = False,

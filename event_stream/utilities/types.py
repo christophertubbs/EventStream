@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import typing
+import importlib
+from types import ModuleType
 
 from typing import (
     Union,
@@ -16,9 +18,6 @@ from typing import (
     Optional,
     Dict,
     List,
-    SupportsBytes,
-    SupportsInt,
-    SupportsFloat,
     Protocol,
     Callable,
     runtime_checkable,
@@ -29,25 +28,150 @@ from typing_extensions import ParamSpec
 
 from redis.asyncio import Redis
 
-INCLUDE_EXCLUDE_TYPES = Union[Set[str], Mapping[str, Any]]
-
-HASHABLE_TYPES = (
-    SupportsInt,
-    SupportsFloat,
-    SupportsBytes,
-    str,
-    bytes,
-    tuple
-)
-
 T = TypeVar("T")
+"""Indicates a general type of object"""
+
 R = TypeVar("R")
+"""Indicates a general type of object to be returned"""
+
 P = ParamSpec("P")
+"""Indicates *args and **kwargs parameters"""
+
+_IMPORTED_LIBRARIES: typing.Dict[str, ModuleType] = dict()
 
 
-class CodeDesignationProtocol(Protocol):
+@runtime_checkable
+class ConsumerProtocol(Protocol):
+
+    @property
+    def is_active(self) -> bool:
+        """
+        Whether the consumer is actively connected to a redis stream and group
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def stream_name(self) -> str:
+        """
+        The name of the stream the consumer is connected to
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def group_name(self) -> str:
+        """
+        The name of the group that the consumer is a member of
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def consumer_name(self) -> str:
+        """
+        The unique name for this consumer
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def last_processed_message(self) -> typing.Optional[str]:
+        """
+        The ID of the last message that was read by the consumer
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def connection(self) -> Redis:
+        """
+        The connection to the redis instance
+        """
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    async def create_consumer(self):
+        """
+        Create a new consumer within the redis instance
+        """
+        ...
+
+    async def read(self, block_ms: int = None) -> typing.Mapping[str, typing.Dict[str, str]]:
+        """
+        Read data from the stream into the group and assign it to the consumer
+
+        Example:
+            >>> read_data = self.read()
+            {"channel_name": {"message-id-0": {"value1": 1, "value2": 2}, "message-id-1": {"value1": 3, "value2": 4}}}
+
+        Args:
+            block_ms: The number of milliseconds to wait for a response
+
+        Returns:
+            The data that was read organized into an easy-to-read structure
+        """
+        # No need to lock - redis handles the first-come-first-serve process for acquiring messages
+        ...
+
+    async def remove_consumer(self):
+        """
+        Remove the consumer from the group attached to the stream
+        """
+        # No need to block - there shouldn't be any other similar consumers
+        ...
+
+    async def mark_message_processed(self, message_id: typing.Union[str, bytes]) -> bool:
+        """
+        Set the given message as processed and kick it out of the group so that processing on it may conclude
+
+        Args:
+            message_id: The ID of the message to kick out of the group
+
+        Returns:
+            Whether the marking completed successfully
+        """
+        # No need to lock - this will be contained within the context of this consumer
+        ...
+
+    async def give_up_message(self, message_id: typing.Union[str, bytes], *, give_to: str = None):
+        """
+        Release the message to another consumer for processing. Hands the message back to the inbox unless
+        specified otherwise
+
+        Args:
+            message_id: The ID of the message to release
+            give_to: Whom to hand the message off to. The message is given to the inbox if not given
+
+        Returns:
+
+        """
+        ...
+
+    async def __aenter__(self):
+        ...
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        ...
+
+
+class DesignationProtocol(Protocol):
     module_name: str
     name: str
+
+
+class CodeDesignationProtocol(DesignationProtocol, Protocol):
+    """Indicates the basic expectations for what a CodeDesignation will contain"""
+    kwargs: typing.Optional[typing.Dict[str, typing.Any]]
+    message_type: DesignationProtocol
+
+    @property
+    def identifier(self) -> str:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def loaded_function(self) -> HANDLER_FUNCTION:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def set_function(self, handler_function: HANDLER_FUNCTION, *, already_checked: bool = None):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def __call__(self, connection: Redis, bus: ReaderProtocol, message: MessageProtocol, **kwargs):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
 
 class RedisConfigurationProtocol(Protocol):
@@ -56,19 +180,31 @@ class RedisConfigurationProtocol(Protocol):
     db: Optional[int]
     username: str
 
-    async def get_connection(self) -> Redis:
+    def connection(self) -> Redis:
         ...
 
 
-@typing.runtime_checkable
-class BusConfigurationProtocol(Protocol):
+@runtime_checkable
+class ReaderConfigurationProtocol(Protocol):
     name: str
-    stream: Optional[str]
-    group: str
-    handlers: Dict[str, List[CodeDesignationProtocol]]
-    redis_configuration: Optional[RedisConfigurationProtocol]
+    stream: typing.Optional[str]
+    unique: typing.Optional[bool]
+    redis_configuration: typing.Optional[RedisConfigurationProtocol]
 
-    def get_application_name(self, include_instance: bool = False) -> str:
+    @classmethod
+    def get_parent_collection_name(cls) -> str:
+        ...
+
+    def gather_handler_errors(self) -> typing.Optional[typing.Union[typing.Sequence[str], str]]:
+        ...
+
+    def get_tracker_ids(self, event_name: str) -> typing.Iterable[str]:
+        ...
+
+    def set_application_name(self, application_name: str):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def get_application_name(self, include_instance: bool = None) -> str:
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
     def set_instance_identifier(self, instance_identifier: str):
@@ -82,7 +218,7 @@ class BusConfigurationProtocol(Protocol):
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
     def set_parent(self, parent):
-        ...
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
     @property
     def group(self) -> str:
@@ -94,11 +230,7 @@ class BusConfigurationProtocol(Protocol):
 
 
 @typing.runtime_checkable
-class BusProtocol(Protocol):
-    @property
-    def configuration(self) -> BusConfigurationProtocol:
-        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
-
+class ReaderProtocol(Protocol):
     @property
     def verbose(self) -> bool:
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
@@ -107,29 +239,40 @@ class BusProtocol(Protocol):
     def name(self) -> str:
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
+    @property
+    def can_make_executive_decisions(self):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    @property
+    def configuration(self) -> ReaderConfigurationProtocol:
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
+    def stop_polling(self):
+        raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
+
     def launch(self) -> asyncio.Task:
         raise NotImplementedError(f"The {self.__class__.__name__} should not be instantiated")
 
-    def get_application_name(self) -> str:
+    async def close(self):
         ...
 
-    def get_instance_identifier(self) -> str:
+    async def process_response(
+        self,
+        consumer: ConsumerProtocol,
+        message_id: str,
+        result: typing.Any
+    ) -> typing.Any:
         ...
 
-    def stop_polling(self):
+    async def process_message(
+        self,
+        consumer: ConsumerProtocol,
+        message_id: str,
+        payload: typing.Dict[str, typing.Any]
+    ) -> typing.Optional[typing.Union[typing.Sequence, MessageProtocol, BaseException]]:
         ...
 
-    def can_make_executive_decisions(self) -> bool:
-        ...
-
-
-@runtime_checkable
-class WeightedProtocol(Protocol):
-    @classmethod
-    def get_weight(cls) -> int:
-        ...
-
-    def dict(self) -> dict:
+    async def listen(self):
         ...
 
 
@@ -148,8 +291,8 @@ class MessageProtocol(Protocol):
     def dict(
         self,
         *,
-        include: INCLUDE_EXCLUDE_TYPES = None,
-        exclude: INCLUDE_EXCLUDE_TYPES = None,
+        include: Union[Set[str], Mapping[str, Any]] = None,
+        exclude: Union[Set[str], Mapping[str, Any]] = None,
         by_alias: bool = False,
         skip_defaults: bool = None,
         exclude_unset: bool = False,
@@ -162,7 +305,7 @@ class MessageProtocol(Protocol):
 HANDLER_FUNCTION = Callable[
     [
         Redis,
-        BusProtocol,
+        ReaderProtocol,
         MessageProtocol,
         typing.Dict[str, typing.Any]
     ],
@@ -176,10 +319,45 @@ Functions should look like:
 
 
 STREAM_MESSAGE = Union[int, Tuple[bytes, Dict[bytes, bytes]]]
+"""Message contents that comes through a stream. Always (b'message_id', {b'key': b'value'})"""
+
 STREAM_MESSAGES = List[STREAM_MESSAGE]
+"""
+A collection of messages that comes through a stream
+
+Examples:
+    >>> messages: STREAM_MESSAGES = [(b'12355435323-0', {b'key': b'value'})]
+"""
+
 STREAMS = List[Tuple[bytes, STREAM_MESSAGES]]
+"""
+Raw stream data that comes through when calling functions like `connection.xreadgroup`.
+
+Expect a list of 2-tuples, with the first element being the name of the stream and the second element being a STREAM_MESSAGES
+
+Examples:
+    >>> data: STREAMS = [
+            (b'EVENTS', [(b'2382394823-0', {b'key': b'value'})]),
+        ]
+"""
 
 PAYLOAD = Union[Dict[str, str], Dict[bytes, bytes]]
+"""The type of data that will accompany a stream message as input data"""
+
+
+def event_handler(aliases: Union[str, List[str]]):
+    if isinstance(aliases, str):
+        aliases = [aliases]
+
+    def decorate_function(function: HANDLER_FUNCTION):
+        enforce_handler(function)
+        alias_copy = aliases.copy()
+        alias_copy.append(function.__name__)
+        setattr(function, "aliases", alias_copy)
+
+        return function
+
+    return decorate_function
 
 
 def type_matches_special_form(
@@ -187,6 +365,26 @@ def type_matches_special_form(
     expected_type: Union,
     check_origin: bool = None
 ) -> bool:
+    """
+    Checks to see if an encountered type definition matches the expected type definition. Serves as a deep `isinstance`
+    for generic types.
+
+    Examples:
+        >>> type_matches_special_form(str, typing.Union[str, int])
+        True
+        >>> type_matches_special_form(bytes, typing.Union[str, int])
+        False
+        >>> type_matches_special_form(typing.Union[str, int], typing.Union[str, bytes])
+        True
+
+    Args:
+        encountered_type:
+        expected_type:
+        check_origin:
+
+    Returns:
+        Whether the encountered type is compatible with the expected type
+    """
     if check_origin is None:
         check_origin = True
 
@@ -234,7 +432,6 @@ def enforce_handler(possible_handler: typing.Callable) -> HANDLER_FUNCTION:
     Returns:
         The original handler
     """
-    # TODO: This should be able to be tacked onto functions and fail if their signature doesn't comply
     if not isinstance(possible_handler, Callable):
         raise ValueError(
             f"The given handler is not valid - "
@@ -337,3 +534,75 @@ def enforce_handler(possible_handler: typing.Callable) -> HANDLER_FUNCTION:
         )
 
     return possible_handler
+
+
+def get_module_from_globals(module_name: str) -> typing.Optional[ModuleType]:
+    if not module_name:
+        return None
+
+    split_name = module_name.strip().split(".")
+
+    place_to_search = globals()
+
+    for name_part in split_name:
+        if isinstance(place_to_search, typing.Mapping):
+            place_to_search = place_to_search.get(name_part, dict())
+        else:
+            place_to_search = getattr(place_to_search, name_part, dict())
+
+    return place_to_search if place_to_search else None
+
+
+def get_code(
+    designation: DesignationProtocol,
+    base_class: typing.Type[T] = None
+) -> typing.Union[typing.Type[T], typing.Callable, typing.Tuple[str, typing.Any]]:
+    """
+    Find an object based off a module name and name
+
+    Args:
+        designation: The configuration stating what to look for
+        base_class: The base class that the found object must comply with
+
+    Returns:
+        A type, variable, or
+    """
+    if designation.module_name in _IMPORTED_LIBRARIES:
+        module = _IMPORTED_LIBRARIES[designation.module_name]
+    else:
+        module = get_module_from_globals(designation.module_name)
+
+        if module is None:
+            module = importlib.import_module(designation.module_name)
+            _IMPORTED_LIBRARIES[designation.module_name] = module
+
+    if module is None:
+        raise Exception(
+            f"No modules could be found at {designation.module_name}."
+            f"Please check the configuration to check to see if it was correct."
+        )
+
+    code = getattr(module, designation.name, None)
+
+    if code is None:
+        members = [
+            (member_name, member)
+            for member_name, member in inspect.getmembers(module)
+            if member_name == designation.name
+        ]
+
+        if len(members) > 0:
+            code = members[0]
+
+    if base_class and not (issubclass(code, base_class) or isinstance(code, base_class)):
+        raise ValueError(
+            f"The found object ('{str(code)}') from '{str(designation)}' "
+            f"does not match the required base class ('{str(base_class)}')"
+        )
+
+    if code is not None:
+        return code
+
+    raise Exception(
+        f"No valid types or functions could be found in {designation.module_name}. Please check the configuration."
+    )

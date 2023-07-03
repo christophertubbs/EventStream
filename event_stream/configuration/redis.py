@@ -1,6 +1,8 @@
 """
 Defines the configuration model for how to connect to redis
 """
+from __future__ import annotations
+
 import typing
 import os
 
@@ -14,13 +16,25 @@ from event_stream.utilities.common import get_environment_variable
 from event_stream.configuration.parts import PasswordEnabled
 from event_stream.configuration.ssl import SSLConfiguration
 
+from event_stream.system import settings
+
 
 class RedisConfiguration(BaseModel, PasswordEnabled):
     """
     Represents the settings needed to connect to a Redis instance and a helpful function used to create a
     connection to it
     """
-    host: str = Field(
+    @classmethod
+    def default(cls) -> RedisConfiguration:
+        return cls(
+            host=settings.default_redis_host,
+            port=settings.default_redis_port,
+            db=settings.default_redis_db,
+            username=settings.default_redis_user,
+            password=settings.default_redis_password
+        )
+
+    host: typing.Optional[str] = Field(
         default="127.0.0.1",
         description="The web address of the machine hosting the redis instance"
     )

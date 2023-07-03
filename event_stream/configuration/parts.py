@@ -28,7 +28,7 @@ class PasswordEnabled:
     password_file: typing.Optional[str] = None
     password_env_variable: typing.Optional[str] = None
 
-    @validator('*', pre=True)
+    @validator('password', 'password_file', pre=True)
     def _assign_environment_variables_to_passwords(self, value):
         if isinstance(value, str) and value.startswith("$"):
             value = os.environ.get(value[1:])

@@ -6,11 +6,13 @@ import unittest
 
 import messages
 from messages import Message
-from messages import ValueEvent
-from messages import ExampleEvent
+from messages import GenericMessage
+from messages.examples import ExampleMessage
 from messages.master import TrimMessage
-from messages import JSONIntListMessage
-from messages import TypedJSONMessage
+from messages.examples import ValueEvent
+from messages.examples import ExampleEvent
+from messages.examples import TypedJSONMessage
+
 
 class TestMessages(unittest.TestCase):
     def test_generic_message(self):
@@ -58,6 +60,14 @@ class TestMessages(unittest.TestCase):
             "example_body_value": 1
         }
 
+        generic_message = {
+            "event": "generic test",
+            "data": {
+                "value1": 1,
+                "value2": 2
+            }
+        }
+
         typed_payload_data = {
             "event": "payload testing",
             "data": json.dumps(value_message)
@@ -65,6 +75,8 @@ class TestMessages(unittest.TestCase):
 
         parsed_payload_message = messages.parse(payload_data)
         parsed_typed_payload_message = messages.parse(typed_payload_data)
+        parsed_generic_message = messages.parse(generic_message)
 
-        self.assertEqual(type(parsed_payload_message), JSONIntListMessage)
+        self.assertEqual(type(parsed_payload_message), ExampleMessage)
         self.assertEqual(type(parsed_typed_payload_message), TypedJSONMessage)
+        self.assertEqual(type(parsed_generic_message), GenericMessage)

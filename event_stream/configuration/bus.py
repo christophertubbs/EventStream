@@ -11,6 +11,7 @@ from pydantic import PrivateAttr
 from pydantic import root_validator
 from pydantic import validator
 
+from . import RedisConfiguration
 from . import redis
 from . import group
 from .communication import ListenerConfiguration
@@ -189,6 +190,9 @@ class EventBusConfigurations(BaseModel):
                 "Either a series of bus objects ('busses') or handler objects ('handlers') must be defined. "
                 "Neither could be found."
             )
+
+        if "redis_configuration" not in values:
+            values['redis_configuration'] = RedisConfiguration.default()
 
         for bus in values.get("busses", []):  # type: EventBusConfiguration
             update_bus(

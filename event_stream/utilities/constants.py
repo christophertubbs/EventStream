@@ -4,7 +4,9 @@ Defines constants to be used throughout the application
 import os
 import re
 import string
+import pathlib
 
+BASE_DIRECTORY = pathlib.Path("../").resolve()
 
 CLOSE_KEYWORDS = ["close", "disconnect"]
 WAIT_DAYS = 3

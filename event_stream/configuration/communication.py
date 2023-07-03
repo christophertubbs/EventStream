@@ -13,6 +13,7 @@ from pydantic import root_validator
 from event_stream.configuration import RedisConfiguration
 from event_stream.system import settings
 from event_stream.utilities.common import get_environment_variable
+from event_stream.utilities.common import generate_group_name
 
 
 class ListenerConfiguration(BaseModel, abc.ABC):
@@ -104,13 +105,12 @@ class ListenerConfiguration(BaseModel, abc.ABC):
     @property
     def group(self) -> str:
         if self._group_name is None:
-            parts = [
-                self.stream,
-                self.get_application_name(),
-                self.__class__.__name__,
-                self.name
-            ]
-            self._group_name = settings.key_separator.join(parts)
+            self._group_name = generate_group_name(
+                stream_name=self.stream,
+                application_name=self.get_application_name(),
+                class_name=self.__class__.__name__,
+                listener_name=self.name
+            )
 
         return self._group_name
 

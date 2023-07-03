@@ -1,26 +1,59 @@
 """
 Contains common functions
 """
+import asyncio
 import os
 import typing
 import inspect
 import json
 import math
 import random
+import re
+from functools import partial
 
 from .constants import INTEGER_PATTERN
 from .constants import FLOATING_POINT_PATTERN
 from .constants import TRUE_VALUES
 from .constants import IDENTIFIER_SAMPLE_SET
 from .constants import IDENTIFIER_LENGTH
+from .constants import BASE_DIRECTORY
 
 from .types import T
 from .types import R
 from .types import PAYLOAD
 from .types import P
+from .types import C_T
+
+from event_stream.system import settings
+from event_stream.system import logging
 
 
-def generate_identifier(length: int = None, separator: str = None, sample: typing.Iterable = None) -> str:
+LIBRARY_FILE_PATTERN = re.compile(r"python\d+\.\d+(?!/site-packages)")
+"""
+Pattern that matches on directory names like 'Versions/3.9/lib/python3.9/unittest/async_case.py' to help identify files 
+belonging to Python itself and not third party libraries
+"""
+
+PYTHON_DIRECTORY_PATTERN = re.compile(r"[pP]ython\d+\.\d+/?")
+"""
+Pattern that matches on a part of a string that identifies a python version
+
+Examples:
+    >>> path = 'Versions/3.9/lib/python3.9/unittest/async_case.py'
+    >>> PYTHON_DIRECTORY_PATTERN.split(path)
+    ['Versions/3.9/lib/', 'unittest/async_case.py']
+"""
+
+
+def generate_identifier(
+    length: int = None,
+    group_count: int = None,
+    separator: str = None,
+    sample: typing.Sequence = None
+) -> str:
+    if group_count is None:
+        group_count = 1
+
     if length is None:
         length = IDENTIFIER_LENGTH
 
@@ -30,10 +63,23 @@ def generate_identifier(length: int = None, separator: str = None, sample: typin
     if sample is None:
         sample = IDENTIFIER_SAMPLE_SET
 
-    return separator.join([
-        str(random.choice(sample))
-        for _ in range(length)
-    ])
+    generated_groups = list()
+
+    for _ in range(group_count):
+        generated_groups.append("".join([str(random.choice(sample)) for _ in range(length)]))
+
+    return separator.join(generated_groups)
+
+
+def generate_group_name(stream_name: str, application_name: str, listener_name: str, *args, **kwargs):
+    parts = [stream_name, application_name]
+
+    parts.extend([str(value) for value in args])
+    parts.extend([str(value) for value in kwargs.values()])
+
+    parts.append(listener_name)
+
+    return settings.key_separator.join(parts)
 
 
 def on_each(
@@ -89,7 +135,7 @@ def on_each(
     return results
 
 
-def is_true(value: typing.Union[str, int, bytes, bool, float], *, minimum_truth: float = None) -> bool:
+def is_true(value: typing.Union[str, int, bytes, bool, float, None], *, minimum_truth: float = None) -> bool:
     """
     Determine if a generally non-boolean value is True or False
 
@@ -175,22 +221,78 @@ def get_current_function_name(parent_name: bool = None, frame_index: int = None)
     return caller_info.function
 
 
-def get_stack_trace() -> typing.List[dict]:
+def get_stack_trace(
+    include_all: bool = None,
+    get_parent: bool = None,
+    exclude_fields: typing.Container[str] = None,
+    cut_off_at: typing.Callable[[dict], bool] = None
+) -> typing.List[dict]:
+    if cut_off_at is None:
+        def cut_off_at(*args, **kwargs):
+            return False
+
+    if get_parent is None:
+        get_parent = False
+
+    if not isinstance(include_all, bool):
+        include_all = is_true(include_all)
+
+    if exclude_fields is None:
+        exclude_fields = []
+
     stack = inspect.stack()
     message_parts = list()
 
-    for frame in stack[1:]:
-        message_parts.insert(0, {
-            "file": frame.filename,
-            "code": frame.code_context[0].strip() if frame.code_context else "",
-            "line_number": frame.lineno,
-            "function": frame.function
-        })
+    if get_parent:
+        start_index = 2
+    else:
+        start_index = 1
 
-        if frame.function.strip() == "<module>":
-            break
+    cut_off_index = None
+
+    base_directory_to_replace = str(BASE_DIRECTORY) if str(BASE_DIRECTORY).endswith("/") else str(BASE_DIRECTORY) + "/"
+
+    for frame in reversed(stack[start_index:]):
+        if not (include_all or frame.filename.startswith(str(BASE_DIRECTORY))):
+            continue
+
+        message = {
+            "function": frame.function,
+            "code": frame.code_context[0].strip() if frame.code_context else "",
+            "lineno": frame.lineno
+        }
+
+        if frame.filename.startswith(base_directory_to_replace):
+            message['file'] = frame.filename.replace(base_directory_to_replace, "")
+        else:
+            message['file'] = PYTHON_DIRECTORY_PATTERN.split(frame.filename)[-1]
+
+        for key in exclude_fields:
+            if key in message:
+                message.pop(key)
+
+        if len(message) == 0:
+            raise Exception("Too many fields to exclude were given - a stack trace cannot be created")
+
+        message_parts.append(message)
+
+        if cut_off_at(message):
+            cut_off_index = len(message_parts) - 1
+
+    if cut_off_index is not None:
+        message_parts = message_parts[:cut_off_index]
 
     return message_parts
+
+
+def get_stack_depth() -> int:
+    """
+    Returns:
+        The depth of the current stack from the calling code
+    """
+    # Even though it makes very little difference, we subtract the length by 1 to ensure that this
+    # function isn't included
+    return len(get_stack_trace())
 
 
 def get_by_path(data: typing.Dict[str, typing.Any], *path, default=None):
@@ -261,6 +363,47 @@ def json_to_dict_or_list(
         return None
 
 
+def interpret_value(value):
+    if isinstance(value, bytes):
+        value = value.decode()
+
+    if isinstance(value, dict):
+        data = {
+            key.decode() if isinstance(key, bytes) else key: interpret_value(child)
+            for key, child in value.items()
+        }
+    elif isinstance(value, typing.Iterable) and not isinstance(value, (str, bytes)):
+        data = [
+            interpret_value(child)
+            for child in value
+        ]
+    elif not isinstance(value, str):
+        data = value
+    elif INTEGER_PATTERN.match(value):
+        data = int(value)
+    elif FLOATING_POINT_PATTERN.match(value):
+        data = float(value)
+    elif value.lower() == "true":
+        data = True
+    elif value.lower() == "false":
+        data = False
+    elif value.lower() == "nan":
+        data = math.nan
+    elif value.lower() in ('inf', 'infinity'):
+        data = math.inf
+    elif value.lower() in ('-inf', '-infinity'):
+        data = -math.inf
+    elif value in ("None", "Null", "null", "nil"):
+        data = None
+    else:
+        data = json_to_dict_or_list(value)
+
+        if not data:
+            data = value
+
+    return data
+
+
 def decode_stream_message(message_payload: PAYLOAD) -> typing.Dict[str, typing.Any]:
     decoded_message = dict()
 
@@ -271,42 +414,67 @@ def decode_stream_message(message_payload: PAYLOAD) -> typing.Dict[str, typing.A
         if isinstance(key, bytes):
             key = key.decode()
 
-        if INTEGER_PATTERN.match(value):
-            data = int(value)
-        elif FLOATING_POINT_PATTERN.match(value):
-            data = float(value)
-        elif value.lower() == "true":
-            data = True
-        elif value.lower() == "false":
-            data = False
-        elif value.lower() == "nan":
-            data = math.nan
-        elif value.lower() in ('inf', 'infinity'):
-            data = math.inf
-        elif value.lower() in ('-inf', '-infinity'):
-            data = -math.inf
-        elif value in ("None", "Null", "null", "nil"):
-            data = None
-        else:
-            data = json_to_dict_or_list(value)
-
-            if not data:
-                data = value
-
-        decoded_message[key] = data
+        decoded_message[key] = interpret_value(value)
 
     return decoded_message
 
 
 async def fulfill_method(
-    method: typing.Callable[[typing.Any, ...], typing.Any],
+    method: typing.Callable[[P], C_T[R]],
     *args,
     **kwargs
-):
-    result = method(*args, **kwargs)
+) -> R:
+    """
+    Call a method and await until it no longer returns a coroutine
 
-    while inspect.isawaitable(result):
-        result = await result
+    Useful for executing functions that may or not be asynchronous
+
+    Example:
+        >>> class Example1:
+        >>>     def do_whatever(self, a, b, c):
+        >>>         return f"{a}:{b}:{c}")
+        >>>
+        >>> class Example2:
+        >>>     async def do_whatever(self, a, b, c):
+        >>>         return f"{a}:{b}:{c}")
+        >>>
+        >>> ex1 = Example1()
+        >>> ex2 = Example2()
+        >>> print(await fulfill_method(ex1.do_whatever, 3, 2, c="whatever"))
+        3:2:whatever
+        >>> print(await fulfill_method(ex2.do_whatever, a=3, b=2, c="whatever"))
+        3:2:whatever
+
+    Args:
+        method: The method to call
+        *args: Positional arguments to send to the method
+        **kwargs: keyword arguments to send to the method
+
+    Returns:
+        The first non-awaitable result of the given method
+    """
+    if inspect.iscoroutinefunction(method):
+        return await method(*args, **kwargs)
+
+    wrapped_function = partial(method, *args, **kwargs)
+
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(executor=None, func=wrapped_function)
+
+        while inspect.isawaitable(result):
+            result = await result
+    except BaseException as exception:
+        input_values = list()
+
+        if args:
+            input_values.append(", ".join([str(arg) for arg in args]))
+
+        if kwargs:
+            input_values.append(", ".join([f"{str(key)}={str(value)}" for key, value in kwargs.items()]))
+
+        method_description = f"{method.__name__}({', '.join(input_values)})"
+        logging.error(f"Something went awry while trying to call {method_description}", exception=exception)
+        raise
 
     return result
 
@@ -322,10 +490,28 @@ def instanceof(obj: object, object_type: typing.Type) -> bool:
     if not is_generic(object_type):
         return isinstance(obj, object_type)
 
-    if not isinstance(obj, typing.get_origin(object_type)):
+    origin = typing.get_origin(object_type)
+    is_union = origin == typing.Union
+    origin_does_not_match = not is_union and origin is not None and not isinstance(obj, origin)
+
+    if origin_does_not_match:
         return False
 
     # TODO: Add handling for functions
+
+    if is_union:
+        arguments = typing.get_args(object_type)
+
+        for argument in arguments:
+            if argument is None and obj is not None:
+                continue
+            elif argument is None:
+                return True
+
+            if instanceof(obj, argument):
+                return True
+
+        return False
 
     if isinstance(obj, typing.Mapping):
         key_type, value_type = typing.get_args(object_type)
@@ -344,7 +530,10 @@ def instanceof(obj: object, object_type: typing.Type) -> bool:
 
         return True
 
-    return isinstance(obj, object_type)
+    try:
+        return isinstance(obj, object_type)
+    except:
+        return False
 
 
 def get_concrete_subclasses(cls: typing.Type[T]) -> typing.Iterable[typing.Type[T]]:

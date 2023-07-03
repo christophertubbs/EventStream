@@ -21,7 +21,8 @@ from typing import (
     Protocol,
     Callable,
     runtime_checkable,
-    TypeVar
+    TypeVar,
+    Coroutine
 )
 
 from typing_extensions import ParamSpec
@@ -33,6 +34,9 @@ T = TypeVar("T")
 
 R = TypeVar("R")
 """Indicates a general type of object to be returned"""
+
+C_T = Union[T, Coroutine[Any, Any, T]]
+"""Indicates a value that might either be its correct type or will be the correct type after its been awaited"""
 
 P = ParamSpec("P")
 """Indicates *args and **kwargs parameters"""

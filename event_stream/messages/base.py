@@ -40,6 +40,7 @@ from redis.asyncio import Redis
 from event_stream.utilities.common import get_by_path
 from event_stream.utilities.common import get_current_function_name
 from event_stream.system.system import settings
+from event_stream.utilities.constants import BASE_DIRECTORY
 
 ACCEPTABLE_INPUT_TYPES: Final[Tuple[Type, ...]] = (
     dict,
@@ -376,10 +377,10 @@ class StackInfo(BaseModel):
             A new instance
         """
         # There's a potential risk if the entire path is given in a stack trace, so we want to limit how much is seen
-        if isinstance(settings.base_directory, Path):
+        if isinstance(BASE_DIRECTORY, Path):
             base_directory = str(settings.base_directory.resolve())
         else:
-            base_directory = str(Path(settings.base_directory).resolve())
+            base_directory = str(Path(BASE_DIRECTORY).resolve())
 
         filepath = str(Path(frame.filename).resolve())
 

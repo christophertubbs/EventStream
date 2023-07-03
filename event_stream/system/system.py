@@ -10,17 +10,23 @@ from pathlib import Path
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import root_validator
+from pydantic import validator
 
 from event_stream.utilities.constants import TRUE_VALUES
 
 DEFAULT_SYSTEM_CONFIG_PATH = Path(os.environ.get("EVENT_BUS_SYSTEM_CONFIG_PATH", "system_settings.json"))
 DEFAULT_APPLICATION_NAME = os.environ.get("EVENT_BUS_APPLICATION_NAME", "EventBus")
 DEFAULT_DATETIME_FORMAT = os.environ.get("EVENT_BUS_DATETIME_FORMAT", "%Y-%m-%d %H:%M:%S%z")
+
+DEFAULT_REDIS_HOST = os.environ.get("EVENT_BUS_REDIS_HOST", "localhost")
+DEFAULT_REDIS_PORT = int(os.environ.get("EVENT_BUS_REDIS_PORT", 6379))
+DEFAULT_REDIS_USER = os.environ.get("EVENT_BUS_REDIS_USER", None)
+DEFAULT_REDIS_PASSWORD = os.environ.get("EVENT_BUS_REDIS_PASSWORD", None)
+DEFAULT_REDIS_DB = int(os.environ.get("EVENT_BUS_REDIS_DB", 0))
 DEFAULT_INBOX_CONSUMER_NAME = os.environ.get("EVENT_BUS_SENTINEL_CONSUMER_NAME", "inbox")
 DEFAULT_MASTER_STREAM = os.environ.get("EVENT_BUS_MASTER_STREAM", "MASTER")
 DEFAULT_MAX_LENGTH = int(float(os.environ.get("EVENT_BUS_MAX_LENGTH", 100)))
 LOG_DIRECTORY = Path(os.environ.get("EVENT_BUS_LOG_DIRECTORY", "../"))
-BASE_DIRECTORY = Path(os.environ.get("EVENT_BUS_BASE_DIRECTORY", "../"))
 
 KEY_SEPARATOR = os.environ.get("EVENT_BUS_KEY_SEPARATOR", ":")
 KEY_LIFETIME_SECONDS = timedelta(seconds=int(os.environ.get("EVENT_BUS_LIFETIME_SECONDS", 60 * 60 * 2)))
@@ -40,8 +46,36 @@ class _SystemSettings(BaseModel):
     consumer_inbox_name: typing.Optional[str] = Field(default=DEFAULT_INBOX_CONSUMER_NAME)
     master_stream: typing.Optional[str] = Field(default=DEFAULT_MASTER_STREAM)
     max_idle_time: typing.Optional[int] = Field(default=MAX_IDLE_TIME_MS)
-    base_directory: typing.Optional[typing.Union[str, Path]] = Field(default=BASE_DIRECTORY)
     approximate_max_stream_length: typing.Optional[int] = Field(default=DEFAULT_MAX_LENGTH)
+
+    default_redis_host: typing.Optional[str] = Field(default=DEFAULT_REDIS_HOST)
+    default_redis_port: typing.Optional[int] = Field(default=DEFAULT_REDIS_PORT)
+    default_redis_user: typing.Optional[str] = Field(default=DEFAULT_REDIS_USER)
+    default_redis_password: typing.Optional[str] = Field(default=DEFAULT_REDIS_PASSWORD)
+    default_redis_db: typing.Optional[int] = Field(default=DEFAULT_REDIS_DB)
+
+    @validator('*', pre=True)
+    def _assign_environment_variables(cls, value):
+        """
+        Check to see if a value might be an environment variable - if so, evaluate it to get the actual value
+
+        Args:
+            value: The value to transform
+
+        Returns:
+            The updated value if it was found, the original value otherwise
+        """
+        value_to_alter = value
+        found_value = None
+
+        while isinstance(value_to_alter, str) and value.startswith("$"):
+            value_to_alter = os.environ.get(value_to_alter[1:])
+
+            if value_to_alter in os.environ:
+                value_to_alter = os.environ.get(value_to_alter)
+                found_value = value_to_alter
+
+        return found_value or value
 
     @root_validator
     def _ensure_defaults(cls, values):
